@@ -1,0 +1,16 @@
+{
+  "schema_version": 2,
+  "run_id": null,
+  "server_alias": null,
+  "os": null,
+  "shell": null,
+  "video_root": null,
+  "logo_root_read_only": null,
+  "run_workspace_inside_video_root": null,
+  "runtime_root_inside_video_root": null,
+  "hardware": {"cpu": null, "ram_gib": null, "gpu": null, "vram_mib": null, "free_disk_gib": null},
+  "software": {"python": null, "ffmpeg": null, "ffprobe": null, "pytorch": null, "asr": null, "tts": null, "vision": null},
+  "write_scope": "VIDEO_ROOT_ONLY",
+  "logo_root_write_allowed": false,
+  "system_changes_allowed": false
+}

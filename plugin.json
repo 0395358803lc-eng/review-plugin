@@ -1,0 +1,42 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "review-phim",
+  "version": "1.2.5",
+  "description": "Quy trình Review-Phim khóa cứng tài khoản Desktop Commander, deviceId, machine fingerprint, thư mục video và logo; không tự chuyển máy/thư mục; 40 bước, 8 QC tuần tự.",
+  "author": {
+    "name": "SQY",
+    "email": "hareriatoele@gmail.com"
+  },
+  "keywords": [
+    "review-phim",
+    "film-review",
+    "video",
+    "Vietnamese",
+    "FFmpeg",
+    "VieNeu-TTS",
+    "server-binding",
+    "device-lock"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "review-phim",
+        "shortDescription": "Khóa máy chủ và thư mục khi sản xuất review phim",
+        "longDescription": "Thứ tự bắt buộc: chọn tài khoản/máy chủ → chọn thư mục video → chọn thư mục logo → tạo server binding theo deviceId, link_id và machine fingerprint → khảo sát/cài đặt/sản xuất trên đúng máy và đúng hai thư mục. Không failover, không tự đổi tài khoản hoặc đường dẫn. Chỉ ghi trong thư mục video; thư mục logo chỉ đọc. 40 bước, 8 QC; BLOCKED phải sửa và xác minh PASS mới tiếp tục. Dừng trước bước 21 để chọn giọng. Không tự resume hoặc tự đăng YouTube.",
+        "developerName": "SQY",
+        "category": "Productivity",
+        "capabilities": [
+          "Interactive"
+        ],
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png",
+        "defaultPrompt": [
+          "Bắt đầu Review-Phim: chọn tài khoản Desktop Commander nếu cần, chọn đúng máy chủ, rồi chọn thư mục video và thư mục logo.",
+          "Khóa server bằng link_id + deviceId + machine fingerprint; khóa VIDEO_ROOT và LOGO_ROOT. Không chuyển máy hoặc thư mục.",
+          "Thực hiện Review-Phim 40 bước và 8 QC trên đúng máy chủ và thư mục đã khóa; lỗi thì BLOCKED, không failover."
+        ]
+      },
+      "apps": "./.app.json"
+    }
+  }
+}
