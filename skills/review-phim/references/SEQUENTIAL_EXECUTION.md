@@ -3,7 +3,7 @@
 ## A. Luồng bắt buộc
 1. Chọn máy chủ.
 2. Nhận `VIDEO_ROOT` và `LOGO_ROOT` ngay sau khi chọn máy.
-3. Xác minh hai thư mục và file đầu vào trên máy đã chọn.
+3. Dùng `get_config` và `set_config_value` nếu cần để cho phép đúng `LOGO_ROOT` trong Desktop Commander; không mở quyền cả ổ và không dùng allowedDirectories rỗng. Đọc thử logo trên đúng máy, sau đó xác minh hai thư mục và file đầu vào. Xem `LOGO_ACCESS.md`.
 4. Tự động tạo `VIDEO_ROOT/WORKSPACE` trên máy đã chọn; xác minh không phải symlink/junction, giữ nguyên nội dung cũ.
 5. Khóa phạm vi: **chỉ ghi dưới `VIDEO_ROOT/WORKSPACE`**, chỉ đọc `LOGO_ROOT` và phim nguồn ở ngoài WORKSPACE.
 6. Khảo sát cấu hình máy chủ và phần mềm.

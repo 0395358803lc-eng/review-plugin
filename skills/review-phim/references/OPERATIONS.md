@@ -3,12 +3,12 @@
 ## 1. Thứ tự khởi động duy nhất
 1. Liệt kê máy chủ Remote Desktop Commander và chờ người dùng chọn.
 2. Ngay sau khi chọn máy, nhận `VIDEO_ROOT` và `LOGO_ROOT` (hoặc xác nhận không dùng logo).
-3. Xác minh hai thư mục và file đầu vào trên đúng máy.
+3. Đọc `get_config` và tự bổ sung đúng `LOGO_ROOT` người dùng chọn vào `allowedDirectories` nếu thiếu; KHÔNG dùng `[]`, giữ nguyên mục cũ. Gọi lại `get_config`, truy cập thử logo và xác minh hai thư mục trên đúng máy theo `LOGO_ACCESS.md`.
 4. **Tự động tạo `VIDEO_ROOT/WORKSPACE` trên đúng máy, không hỏi người dùng chọn nơi lưu**, xác minh là thư mục thật, không link/junction. Đặt tools/runtime/cache/tmp/runs bên trong.
 5. Chỉ sau đó mới khảo sát phần cứng/phần mềm, đề xuất cấu hình và cài đặt.
 6. Hoàn thành preflight rồi mới mở bước 01; bước 01 cũng cần một phê duyệt riêng.
 
-Không được đảo thành khảo sát/cài đặt trước rồi mới hỏi thư mục. Khi chọn phim gốc, phải loại trừ mọi file bên trong `WORKSPACE`. Không hỏi thêm profile hoặc yêu cầu người dùng tạo JSON.
+Không được từ chối LOGO_ROOT chỉ vì nằm ngoài VIDEO_ROOT hoặc chưa có trong connector allowlist; cấp chính xác quyền công cụ theo `LOGO_ACCESS.md` trước bind. Không được đảo thành khảo sát/cài đặt trước rồi mới hỏi thư mục. Khi chọn phim gốc, phải loại trừ mọi file bên trong `WORKSPACE`. Không hỏi thêm profile hoặc yêu cầu người dùng tạo JSON.
 
 ## 2. Ranh giới đọc/ghi
 - `VIDEO_ROOT`: thư mục phim người dùng chọn, chỉ đọc nguồn. Chỉ cho phép tạo thư mục `WORKSPACE` ở đây; mọi ghi tiếp theo phải nằm bên trong `VIDEO_ROOT/WORKSPACE`.

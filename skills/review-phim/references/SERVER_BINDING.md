@@ -21,6 +21,12 @@ Tên máy chủ chỉ để hiển thị. Hai máy có cùng tên vẫn là hai 
 - PID/process session chỉ có ý nghĩa trên máy đã tạo nó. Mọi thao tác poll, tương tác, dừng hoặc kết thúc process phải dùng đúng `deviceId` và `link_id` đã tạo process.
 - Không dùng `node:local`, Python/container cục bộ, Files/Library, máy ChatGPT hoặc một connector khác để xử lý dữ liệu Production. Tất cả đọc/ghi, cài đặt, render và kiểm tra file Production phải chạy trên máy đã chọn.
 
+## 1.1. LOGO_ROOT bất kỳ trên đúng máy: bảo đảm connector cho phép truy cập
+
+Sau khi người dùng chọn `VIDEO_ROOT` và `LOGO_ROOT`, **trước khi bind** bắt buộc đọc `references/LOGO_ACCESS.md`. `LOGO_ROOT` được phép ở ổ đĩa khác, có khoảng trắng hoặc Unicode, không bắt buộc cùng ổ với VIDEO_ROOT. `Path not allowed` từ Remote Desktop Commander là vấn đề `allowedDirectories`/quyền connector, không phải lý do thay logo hoặc tắt binding.
+
+Gọi `get_config` trên đúng `deviceId` và `link_id`; nếu allowlist không rỗng và thiếu LOGO_ROOT, chỉ bổ sung đúng thư mục đã chọn bằng `set_config_value` (giữ nguyên mọi giá trị cũ), sau đó `get_config` lại và thử đọc file logo. Tuyệt đối không ghi `allowedDirectories=[]` hoặc tự mở quyền toàn ổ. Nếu quyền OS từ chối, BLOCKED và báo rõ, không đổi ACL. Sau khi đọc logo thành công, mới bind `LOGO_ROOT` bất biến cho RUN_ID.
+
 ## 2. Khóa cứng thư mục
 
 Ngay sau khi chọn máy, nhận đúng hai đường dẫn:

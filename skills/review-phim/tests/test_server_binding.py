@@ -61,6 +61,20 @@ class ServerBindingTests(unittest.TestCase):
         values.update(changes)
         return self.run_quiet(mod.cmd_verify, argparse.Namespace(**values))
 
+    def test_logo_on_other_drive_or_folder_is_read_only_input(self):
+        # The chosen folder is separate from VIDEO_ROOT; it need not be a child.
+        logo_file = self.logo / "New folder" / "brand.png"
+        logo_file.parent.mkdir()
+        logo_file.write_bytes(b"fake image for authorization check")
+        self.verify(read_path=[str(logo_file)])
+        with self.assertRaisesRegex(ValueError, "Write target is outside"):
+            self.verify(write_path=[str(logo_file)])
+
+    def test_os_read_denied_on_logo_is_reported_as_os_permission_error(self):
+        with patch.object(mod.os, "scandir", side_effect=PermissionError("access denied")):
+            with self.assertRaisesRegex(PermissionError, "LOGO_OS_ACCESS_DENIED"):
+                self.verify()
+
     def test_workspace_created_automatically_after_folder_selection(self):
         work = self.video / "WORKSPACE"
         self.assertTrue(work.is_dir())

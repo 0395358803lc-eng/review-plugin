@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "review-phim",
-  "version": "1.2.9",
-  "description": "Review-Phim: khóa máy chủ/WORKSPACE, duyệt từng bước; QC3 kiểm tra kịch bản theo độ dài phim, QC4 đối chiếu WAV thật, giữ 8 QC.",
+  "version": "1.3.2",
+  "description": "Review-Phim 1.3.2: khóa server/WORKSPACE, Windows Sandbox nghiệm thu guest; tự cấp quyền connector đúng LOGO_ROOT người dùng chọn, giữ 40 bước/8 QC.",
   "author": {
     "name": "SQY",
     "email": "hareriatoele@gmail.com"
@@ -15,14 +15,16 @@
     "FFmpeg",
     "VieNeu-TTS",
     "server-binding",
-    "device-lock"
+    "device-lock",
+    "windows-sandbox",
+    "fail-closed"
   ],
   "extensions": {
     "com.openai": {
       "interface": {
         "displayName": "review-phim",
-        "shortDescription": "Duyệt cài đặt và từng bước",
-        "longDescription": "Chọn đúng tài khoản/máy chủ và hai thư mục, khóa binding. Sau khảo sát, liệt kê đầy đủ danh mục cài đặt và chờ duyệt một lần theo hash; sau đó cài tất cả mục đã duyệt. Preflight PASS rồi chờ duyệt bước 01; mỗi lần chỉ chạy một bước trong 40 bước, sau PASS phải dừng và chờ duyệt bước tiếp theo. Dừng sau bước 20 để chọn giọng, rồi duyệt riêng bước 21. 8 QC tuần tự; BLOCKED phải sửa và xác minh PASS. Không tự đổi máy/thư mục hoặc tự đăng YouTube.",
+        "shortDescription": "40 bước, 8 QC, sandbox Windows",
+        "longDescription": "Khóa tài khoản/máy chủ/folder. Linux dùng bubblewrap, Windows chỉ dùng Windows Sandbox VM đã nghiệm thu guest; Windows Home/thiếu virtualization BLOCKED. Logo được chọn ở thư mục riêng, tự bổ sung đúng LOGO_ROOT vào Desktop Commander allowedDirectories và xác minh quyền đọc. Một lần duyệt cài đặt theo SHA256, phê duyệt riêng 40 bước, giữ 8 QC, dừng chọn giọng trước 21, không tự xuất bản.",
         "developerName": "SQY",
         "category": "Productivity",
         "capabilities": [
@@ -31,9 +33,9 @@
         "logo": "./assets/icon.png",
         "composerIcon": "./assets/icon.png",
         "defaultPrompt": [
-          "Bắt đầu Review-Phim: chọn tài khoản Desktop Commander nếu cần, chọn đúng máy chủ, rồi chọn thư mục video và thư mục logo.",
-          "Khóa server bằng link_id + deviceId + machine fingerprint; khóa VIDEO_ROOT và LOGO_ROOT. Không chuyển máy hoặc thư mục.",
-          "Thực hiện Review-Phim 40 bước và 8 QC trên đúng máy chủ và thư mục đã khóa; lỗi thì BLOCKED, không failover."
+          "Bắt đầu Review-Phim: chọn chính xác máy chủ, thư mục video và logo; tạo WORKSPACE và bind.",
+          "Trên Windows phải chạy sandbox-doctor và nghiệm thu Windows Sandbox guest thật; không chạy production nếu BLOCKED.",
+          "Thực hiện tuần tự 40 bước, 8 QC, phê duyệt từng bước và dừng chọn giọng trước bước 21."
         ]
       },
       "apps": "./.app.json"

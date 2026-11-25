@@ -3,7 +3,7 @@
 ## Bắt buộc ngay sau khi chọn thư mục
 1. Chọn chính xác account/link_id và deviceId.
 2. Người dùng chọn VIDEO_ROOT (thư mục chứa phim) và LOGO_ROOT (thư mục chứa logo; có thể không dùng).
-3. Verify hai thư mục và phim/logo nguồn **trên đúng máy**.
+3. Xác minh quyền Desktop Commander của `LOGO_ROOT` theo `LOGO_ACCESS.md` (bổ sung đúng folder đã chọn vào allowedDirectories nếu cần, giữ nguyên mọi entry cũ); sau đó verify hai thư mục và phim/logo nguồn **trên đúng máy**.
 4. Tạo `VIDEO_ROOT/WORKSPACE` ngay; không hỏi nơi khác, không tạo ở cạnh VIDEO_ROOT. Nếu đã có, không xóa/ghi đè dữ liệu trước, chỉ tạo phần con cho RUN_ID mới. Nếu symlink/junction, BLOCKED.
 5. Tạo `WORKSPACE/tools`, `runtime`, `cache`, `tmp`, `runs/<RUN_ID>`; copy script helper vào `WORKSPACE/tools`.
 6. Bind machine and selected roots; workspace path/fingerprint cũng phải được lưu và xác minh mỗi lệnh.

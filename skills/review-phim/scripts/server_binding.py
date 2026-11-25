@@ -152,6 +152,7 @@ def load_binding(binding_file: Path, video_root: Path, logo_root: Path | None,
     video = canonical(video_root)
     logo = canonical(logo_root) if logo_root else None
     ensure_disjoint(video, logo)
+    verify_logo_os_read_access(logo)
     binding_path = require_within(binding_file, workspace_root(video), "Binding manifest")
     if not binding_path.is_file():
         raise FileNotFoundError(f"Binding manifest not found: {binding_path}")
@@ -182,6 +183,24 @@ def load_binding(binding_file: Path, video_root: Path, logo_root: Path | None,
     return data
 
 
+def verify_logo_os_read_access(logo_root: Path | None) -> None:
+    """Verify that the selected folder can be enumerated by the remote OS.
+
+    This is complementary to Desktop Commander allowedDirectories, which must
+    be checked through get_config and an actual connector file read separately.
+    """
+    if logo_root is None:
+        return
+    try:
+        with os.scandir(logo_root) as iterator:
+            next(iterator, None)
+    except OSError as exc:
+        raise PermissionError(
+            f"LOGO_OS_ACCESS_DENIED: cannot read selected LOGO_ROOT {logo_root}; "
+            "check NTFS/OS permissions, not VIDEO_ROOT or the allowedDirectories list"
+        ) from exc
+
+
 def cmd_bind(args) -> None:
     video = canonical(args.video_root)
     logo = canonical(args.logo_root) if args.logo_root else None
@@ -190,6 +209,7 @@ def cmd_bind(args) -> None:
     if logo is not None and not logo.is_dir():
         raise NotADirectoryError(f"LOGO_ROOT does not exist: {logo}")
     ensure_disjoint(video, logo)
+    verify_logo_os_read_access(logo)
     if not args.device_id.strip() or not args.link_id.strip():
         raise ValueError("Exact Desktop Commander deviceId and link_id are required")
     work = workspace_root(video, create=True)

@@ -1,8 +1,8 @@
 {
   "interface": {
     "displayName": "review-phim",
-    "shortDescription": "Duy\u1ec7t c\u00e0i \u0111\u1eb7t v\u00e0 t\u1eebng b\u01b0\u1edbc",
-    "longDescription": "Ch\u1ecdn \u0111\u00fang t\u00e0i kho\u1ea3n/m\u00e1y ch\u1ee7 v\u00e0 hai th\u01b0 m\u1ee5c, kh\u00f3a binding. Sau kh\u1ea3o s\u00e1t, li\u1ec7t k\u00ea \u0111\u1ea7y \u0111\u1ee7 danh m\u1ee5c c\u00e0i \u0111\u1eb7t v\u00e0 ch\u1edd duy\u1ec7t m\u1ed9t l\u1ea7n theo hash; sau \u0111\u00f3 c\u00e0i t\u1ea5t c\u1ea3 m\u1ee5c \u0111\u00e3 duy\u1ec7t. Preflight PASS r\u1ed3i ch\u1edd duy\u1ec7t b\u01b0\u1edbc 01; m\u1ed7i l\u1ea7n ch\u1ec9 ch\u1ea1y m\u1ed9t b\u01b0\u1edbc trong 40 b\u01b0\u1edbc, sau PASS ph\u1ea3i d\u1eebng v\u00e0 ch\u1edd duy\u1ec7t b\u01b0\u1edbc ti\u1ebfp theo. D\u1eebng sau b\u01b0\u1edbc 20 \u0111\u1ec3 ch\u1ecdn gi\u1ecdng, r\u1ed3i duy\u1ec7t ri\u00eang b\u01b0\u1edbc 21. 8 QC tu\u1ea7n t\u1ef1; BLOCKED ph\u1ea3i s\u1eeda v\u00e0 x\u00e1c minh PASS. Kh\u00f4ng t\u1ef1 \u0111\u1ed5i m\u00e1y/th\u01b0 m\u1ee5c ho\u1eb7c t\u1ef1 \u0111\u0103ng YouTube.",
+    "shortDescription": "40 b\u01b0\u1edbc, 8 QC, sandbox Windows",
+    "longDescription": "Kh\u00f3a t\u00e0i kho\u1ea3n/m\u00e1y ch\u1ee7/folder. Linux d\u00f9ng bubblewrap, Windows ch\u1ec9 d\u00f9ng Windows Sandbox VM \u0111\u00e3 nghi\u1ec7m thu guest; Windows Home/thi\u1ebfu virtualization BLOCKED. Logo \u0111\u01b0\u1ee3c ch\u1ecdn \u1edf th\u01b0 m\u1ee5c ri\u00eang, t\u1ef1 b\u1ed5 sung \u0111\u00fang LOGO_ROOT v\u00e0o Desktop Commander allowedDirectories v\u00e0 x\u00e1c minh quy\u1ec1n \u0111\u1ecdc. M\u1ed9t l\u1ea7n duy\u1ec7t c\u00e0i \u0111\u1eb7t theo SHA256, ph\u00ea duy\u1ec7t ri\u00eang 40 b\u01b0\u1edbc, gi\u1eef 8 QC, d\u1eebng ch\u1ecdn gi\u1ecdng tr\u01b0\u1edbc 21, kh\u00f4ng t\u1ef1 xu\u1ea5t b\u1ea3n.",
     "developerName": "SQY",
     "category": "Productivity",
     "capabilities": [
@@ -11,15 +11,15 @@
     "logo": "./assets/icon.png",
     "composerIcon": "./assets/icon.png",
     "defaultPrompt": [
-      "B\u1eaft \u0111\u1ea7u Review-Phim: ch\u1ecdn t\u00e0i kho\u1ea3n Desktop Commander n\u1ebfu c\u1ea7n, ch\u1ecdn \u0111\u00fang m\u00e1y ch\u1ee7, r\u1ed3i ch\u1ecdn th\u01b0 m\u1ee5c video v\u00e0 th\u01b0 m\u1ee5c logo.",
-      "Kh\u00f3a server b\u1eb1ng link_id + deviceId + machine fingerprint; kh\u00f3a VIDEO_ROOT v\u00e0 LOGO_ROOT. Kh\u00f4ng chuy\u1ec3n m\u00e1y ho\u1eb7c th\u01b0 m\u1ee5c.",
-      "Th\u1ef1c hi\u1ec7n Review-Phim 40 b\u01b0\u1edbc v\u00e0 8 QC tr\u00ean \u0111\u00fang m\u00e1y ch\u1ee7 v\u00e0 th\u01b0 m\u1ee5c \u0111\u00e3 kh\u00f3a; l\u1ed7i th\u00ec BLOCKED, kh\u00f4ng failover."
+      "B\u1eaft \u0111\u1ea7u Review-Phim: ch\u1ecdn ch\u00ednh x\u00e1c m\u00e1y ch\u1ee7, th\u01b0 m\u1ee5c video v\u00e0 logo; t\u1ea1o WORKSPACE v\u00e0 bind.",
+      "Tr\u00ean Windows ph\u1ea3i ch\u1ea1y sandbox-doctor v\u00e0 nghi\u1ec7m thu Windows Sandbox guest th\u1eadt; kh\u00f4ng ch\u1ea1y production n\u1ebfu BLOCKED.",
+      "Th\u1ef1c hi\u1ec7n tu\u1ea7n t\u1ef1 40 b\u01b0\u1edbc, 8 QC, ph\u00ea duy\u1ec7t t\u1eebng b\u01b0\u1edbc v\u00e0 d\u1eebng ch\u1ecdn gi\u1ecdng tr\u01b0\u1edbc b\u01b0\u1edbc 21."
     ]
   },
   "apps": "./.app.json",
   "name": "review-phim",
-  "version": "1.2.9",
-  "description": "Review-Phim: kh\u00f3a m\u00e1y ch\u1ee7/WORKSPACE, duy\u1ec7t t\u1eebng b\u01b0\u1edbc; QC3 ki\u1ec3m tra k\u1ecbch b\u1ea3n theo \u0111\u1ed9 d\u00e0i phim, QC4 \u0111\u1ed1i chi\u1ebfu WAV th\u1eadt, gi\u1eef 8 QC.",
+  "version": "1.3.2",
+  "description": "Review-Phim 1.3.2: kh\u00f3a server/WORKSPACE, Windows Sandbox nghi\u1ec7m thu guest; t\u1ef1 c\u1ea5p quy\u1ec1n connector \u0111\u00fang LOGO_ROOT ng\u01b0\u1eddi d\u00f9ng ch\u1ecdn, gi\u1eef 40 b\u01b0\u1edbc/8 QC.",
   "author": {
     "name": "SQY",
     "email": "hareriatoele@gmail.com"
@@ -32,7 +32,9 @@
     "FFmpeg",
     "VieNeu-TTS",
     "server-binding",
-    "device-lock"
+    "device-lock",
+    "windows-sandbox",
+    "fail-closed"
   ],
   "skills": "./skills"
 }

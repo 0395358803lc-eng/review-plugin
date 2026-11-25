@@ -1,132 +1,41 @@
 ---
 name: review-phim
-description: "Điều phối nghiên cứu và sản xuất review phim với khóa máy chủ/thư mục, một lần duyệt toàn bộ danh mục cài đặt và phê duyệt riêng từng bước trong quy trình 40 bước; 8 QC tuần tự, BLOCKED phải sửa và xác minh PASS."
+description: "Điều phối sản xuất video review 40 bước, khóa máy chủ/thư mục, 8 QC, phê duyệt từng bước; Linux bubblewrap, Windows Sandbox fail-closed và nghiệm thu guest thực tế trước khi sản xuất."
 ---
-# Review-Phim 1.2.9
+# Review-Phim 1.3.2 — Windows Sandbox + LOGO_ROOT access
 
-## Nguyên tắc cốt lõi
+## Ưu tiên tham chiếu
+Đọc **`references/SERVER_BINDING.md`**, **`references/LOGO_ACCESS.md`**, **`references/WORKSPACE_LAYOUT.md`**, **`references/WINDOWS_SANDBOX.md`**, **`references/EXECUTION_SECURITY.md`** trước khi làm việc. Duy trì đầy đủ SOP trong `OPERATIONS.md`, `SEQUENTIAL_EXECUTION.md`, `WORKFLOW.md`, `QUALITY.md`, `SCHEMAS.md`, `EDITORIAL.md` và **`SCRIPT_DURATION.md`** (bắt buộc từ bước 16 đến 40, nhất là QC3/QC4). `WINDOWS_SANDBOX.md` bản 1.3.1 ưu tiên hơn các đoạn tài liệu 1.2.x nói rằng Windows luôn không có sandbox; KHÔNG thay thế các quy tắc server binding, WORKSPACE hay phê duyệt trong tài liệu cũ.
 
-**Một lượt Production = một máy chủ + một tài khoản kết nối + một thư mục video + một thư mục logo + một chuỗi phê duyệt có audit.** Sau khi người dùng chọn, các thông tin lựa chọn này bị khóa cho đến khi lượt kết thúc. Không tự chuyển máy, đổi account, thay folder, tìm đường dẫn tương tự hoặc dùng tài nguyên từ dự án khác.
+## Máy chủ và thư mục — không nhầm máy/nhầm folder
+- Khi Production được gọi, liệt kê máy bằng Desktop Commander `list_devices` với `link_id` hiện tại, người dùng chọn một `deviceId`. Nếu thiết bị và thư mục đã được chọn trong **lượt hiện tại**, không hỏi lại. Không lấy máy/thư mục từ lịch sử làm sự chấp thuận mặc định.
+- Sau chọn máy, người dùng chọn chính xác `VIDEO_ROOT` và `LOGO_ROOT` (hoặc xác nhận không dùng logo). Tất cả Remote Desktop Commander calls phải dùng **đúng `deviceId` và `link_id`**; không failover, không tự chọn máy có tên tương tự.
+- **Ngay sau khi chọn `LOGO_ROOT`, trước khi bind**, xử lý `Path not allowed` bằng quy trình **`references/LOGO_ACCESS.md`**: gọi `get_config` trên đúng link_id/deviceId, kiểm tra `allowedDirectories`, nếu cần dùng `set_config_value` thêm **đúng thư mục logo vừa chọn**, giữ nguyên mọi entry cũ, KHÔNG dùng `[]` hoặc mở toàn ổ. Gọi `get_config` lần nữa và đọc thử logo; nếu vẫn bị chặn, phân biệt lỗi allowlist/OS quyền và báo BLOCKED. Không đòi user chuyển logo sang VIDEO_ROOT hoặc WORKSPACE. Không sửa NTFS ACL, không chạy quyền admin, không vượt quyền host.
+- `allowedDirectories` là quyền công cụ file chung, không phải quyền OS read-only. Khi thêm LOGO_ROOT, plugin vẫn **chỉ được gọi thao tác đọc** với logo, tuyệt đối không ghi/move/edit tại đây. Mọi output vẫn chỉ trong WORKSPACE; không coi việc set_config thành công là bằng chứng đọc được logo.
+- Chỉ xác minh phim trong `VIDEO_ROOT` ngoài `WORKSPACE` và logo trong `LOGO_ROOT`; nếu nhiều phim mơ hồ phải chọn đúng phim. Không duyệt ổ khác, home, Desktop hoặc máy khác ngoài hai root đã chọn.
+- Tạo `VIDEO_ROOT/WORKSPACE` ngay trong `VIDEO_ROOT`; xác minh nó là thư mục thật (không junction/symlink) và không xóa dữ liệu trước. Chỉ `WORKSPACE` có quyền ghi của quy trình, logo và video nguồn read-only. Tạo `tools`, `runtime`, `cache`, `tmp`, `runs/<RUN_ID>` và sao chép helper từ plugin tại `scripts/server_binding.py`, `scripts/workflow_state.py`, `scripts/windows_sandbox_adapter.py`, `scripts/windows_sandbox.py`, `scripts/windows_sandbox_guest.ps1` vào `WORKSPACE/tools`.
+- Mỗi lượt mới dùng `RUN_ID` khác; bind `link_id`, `deviceId`, `machine_fingerprint`, canonical roots và workspace với `server_binding.py bind`. Bắt buộc `verify` ra `status=verified`, đúng binding trước mọi thao tác trực tiếp. Nếu mất máy, thay fingerprint/đường dẫn, BLOCKED; không đổi máy và không xóa lock.
+- Mọi dữ liệu Production: model, venv/portable runtime, temp, cache, logs, WAV, clip, Final, manifest, state ở `VIDEO_ROOT/WORKSPACE` và chỉ ở đó. Không ghi dữ liệu mới vào `.review-phim` cũ hoặc root ngoài `WORKSPACE`, không tự migrate output cũ. `VIDEO_ROOT` ngoài WORKSPACE chỉ đọc phim nguồn, `LOGO_ROOT` chỉ đọc logo.
 
-Trước khi làm việc, bắt buộc đọc `references/SERVER_BINDING.md` và `references/WORKSPACE_LAYOUT.md`. SERVER_BINDING ưu tiên nhận diện máy chủ; WORKSPACE_LAYOUT ưu tiên phạm vi ghi dữ liệu và vị trí các file. Tiếp tục tuân thủ `references/OPERATIONS.md`, `references/SEQUENTIAL_EXECUTION.md`, `references/WORKFLOW.md`, `references/QUALITY.md`, `references/SCHEMAS.md`, `references/EDITORIAL.md` và **`references/SCRIPT_DURATION.md`** (bắt buộc cho bước 16–40 và QC3/QC4).
+## Executor Linux/Windows
+- Linux: `server_binding.py run-command` yêu cầu bubblewrap hệ thống đáng tin, root filesystem readonly và chỉ bind RW WORKSPACE. Không chạy shell/subprocess trực tiếp.
+- Windows: **chạy các subcommand `bind`, `verify`, `run-workflow`, `run-command` qua `WORKSPACE/tools/windows_sandbox_adapter.py`**. Adapter giữ lại toàn bộ validation và approval gate từ `server_binding.py`; chỉ lệnh `run-command` được gửi vào VM Windows Sandbox. KHÔNG gọi trực tiếp `server_binding.py run-command` trên Windows, KHÔNG dùng PowerShell/Python/FFmpeg chạy host để né sandbox.
+- Sau khi bind, chạy `windows_sandbox_adapter.py sandbox-doctor` trên máy được khóa. Nếu Windows không hỗ trợ hoặc thiếu Windows Sandbox, hiển thị `BLOCKED` với mã cụ thể; không tự cài feature, bật ảo hóa, nâng edition, sửa registry, vô hiệu quyền bảo vệ hoặc đổi máy.
+- Nếu doctor đủ điều kiện, chạy `windows_sandbox_adapter.py sandbox-acceptance` với đúng binding trước bất kỳ lệnh Production nào. Đây là một tác vụ kiểm thử cô lập OS riêng (không thực hiện nội dung phim), có thể chạy ngay sau bind nếu người dùng đã phê duyệt nghiệm thu sandbox. Nó phải **thực sự khởi động guest**, kiểm tra WRITE trong WORKSPACE thành công, WRITE vào VIDEO_ROOT/LOGO_ROOT bị từ chối, không có adapter mạng hoạt động. Chỉ thực sự PASS mới tạo `sandbox_acceptance.json` trong run. Không biến unit test/mock hay `doctor` thành chứng nhận acceptance.
+- Windows Sandbox guest chỉ được map **VIDEO_ROOT readonly**, **LOGO_ROOT readonly**, **WORKSPACE RW**, mạng/vGPU/clipboard/thiết bị input/printer disabled, Protected Client enabled. Guest chạy script `windows_sandbox_guest.ps1`, ghi báo cáo trong WORKSPACE và tự tắt VM. Không tự đổi quyền mapped folders, không map ổ C: host, không cấp mạng hoặc clipboard cho guest.
+- `run-command` Windows kiểm tra binding, phase và approval, kiểm tra file manifest/hash, `sandbox_acceptance.json` cùng binding/version/hash runner, rồi mới launch guest; nếu thiếu bất kỳ điều kiện nào trả `BLOCKED`, không có chế độ bypass. Lệnh Windows chỉ được chạy bằng portable executable bên trong WORKSPACE hoặc built-in guest PowerShell/cmd; Python host hay venv ở `.review-phim` không dùng để sản xuất trong guest.
+- Windows Home (gồm Home Single Language) **không hỗ trợ Windows Sandbox**. Không tuyên bố nghiệm thu PASS trên hệ điều hành này; cần thay đổi edition, bật virtualization nếu muốn dùng Windows Sandbox. Mọi thay đổi host/BIOS/edition do người dùng phê duyệt riêng; không tự nâng cấp.
+- Nếu macOS, hoặc Windows không đủ điều kiện, hoặc Linux thiếu bubblewrap: BLOCKED; không fallback chạy host không cô lập. Không dùng Python/container ChatGPT, máy phụ hay GitHub Actions thay máy chủ đã chọn để xử lý tư liệu Production.
 
-## 1. Bắt đầu trực tiếp — không chọn chế độ
+## Kế hoạch và cổng phê duyệt bất biến
+1. Sau bind và đủ điều kiện an toàn, khảo sát cấu hình chỉ đọc. Tạo `environment_report.json`, `installation_plan.json` trong `WORKSPACE/runs/<RUN_ID>`.
+2. Hiển thị **toàn bộ danh mục cần cài/cập nhật** một lần (tên, hiện trạng, version, nguồn, dung lượng, vị trí nằm trong WORKSPACE, rủi ro, kiểm thử). Ghi `set-install-plan`, lấy `plan_sha256`; chỉ tiếp tục sau khi người dùng gửi `REVIEW_PHIM_APPROVE_INSTALL_PLAN <RUN_ID> <PLAN_SHA256>` hoặc click nút thật.
+3. Với kế hoạch đã được duyệt, cài lần lượt qua `run-command --phase install --item-id ...` trong sandbox. Mỗi mục RUNNING → smoke/version/API/integrity → PASS, lỗi thì BLOCKED, phải đề xuất sửa/chấp thuận rủi ro và kiểm tra PASS trước khi tiếp tục. Plan đổi phải duyệt hash lại.
+4. Preflight tổng hợp PASS rồi **dừng** trước bước 01; yêu cầu phê duyệt `REVIEW_PHIM_APPROVE_STEP <RUN_ID> 01`.
+5. Mỗi bước 01–40 chỉ thực hiện khi `approve-step --step N --user-approved` đã được ghi trong state/approval manifest; chạy đúng **một** bước trong lượt đó; kiểm chứng file/metadata/hash, QC nếu tới mốc, đánh dấu PASS, báo cáo và **dừng chờ duyệt bước kế**. Không hiểu “tiếp tục” chung chung là duyệt bước, không gộp phê duyệt 40 bước.
+6. Giữ nguyên 8 QC tại bước **09/QC1, 16/QC2, 20/QC3, 24/QC4, 28/QC5, 32/QC6, 36/QC7, 39/QC8**; `qc-mark --gate ...` chỉ khi bước đang RUNNING. Trước bước 21, dừng cho chọn **giọng thực tế**, không chọn preset mặc định thay người dùng; sau đó vẫn duyệt bước 21 riêng.
+7. QC3 phải kiểm tra độ dài kịch bản so với phim, QC4 đối chiếu WAV thật và timeline, theo `SCRIPT_DURATION.md`. Không gán nhãn PASS cho placeholder, transcript không thật hay file không tồn tại.
+8. Không phát hành YouTube, giữ yêu cầu bản quyền, mục tiêu 1080p đã phê duyệt, phim/logo gốc bất biến. Bước 40 xuất bản giao nội bộ với báo cáo codec/resolution/fps/duration/subtitle/logo/QC/rights/hash.
 
-- Khi người dùng gọi Review-Phim để làm video, bắt đầu ngay bằng **liệt kê/chọn máy chủ**. KHÔNG hiện bảng hoặc hỏi người dùng chọn Research / Production / Resume / QC / Delivery.
-- Nếu yêu cầu chỉ là hỏi thông tin phim hoặc YouTube, trả lời trực tiếp câu hỏi; không bắt chọn chế độ và không tự triển khai sản xuất.
-- Không lấy lựa chọn từ chat trước để thay cho lựa chọn máy chủ và hai thư mục trong lượt hiện tại.
-
-## 2. Khởi động Production — đúng thứ tự
-
-### A. Chọn tài khoản kết nối và máy chủ
-
-1. Dùng `list_devices` với đúng tài khoản Desktop Commander. Nếu có nhiều tài khoản kết nối có thể dùng và chưa rõ tài khoản người dùng muốn, hỏi chọn tài khoản trước.
-2. Liệt kê máy online/offline. Phân biệt các máy trùng tên bằng `deviceId`.
-3. Chờ người dùng chọn một máy. Nếu người dùng đã nêu máy trong yêu cầu hiện tại, xác minh đúng `deviceId` đang online.
-4. Lưu nguyên văn `link_id` và `deviceId` vừa chọn. Không dùng ID cũ từ lượt trước.
-5. Chưa chạy lệnh, chưa khảo sát, chưa đọc/ghi file cho đến khi người dùng đã chọn máy và cung cấp đủ hai folder.
-
-### B. Chọn hai folder ngay sau khi chọn máy
-
-Hỏi đúng hai đường dẫn:
-- `VIDEO_ROOT`: thư mục chứa video/phim nguồn.
-- `LOGO_ROOT`: thư mục chứa logo, hoặc người dùng xác nhận không dùng logo.
-
-Nếu hai đường dẫn đã có trong yêu cầu hiện tại thì dùng đúng chúng. Không hỏi thêm hồ sơ, checkpoint, cấu hình hay dữ liệu không cần thiết.
-
-### C. Xác minh và bind
-
-1. Trên đúng `deviceId` vừa chọn, xác minh `VIDEO_ROOT` và `LOGO_ROOT` tồn tại, có quyền phù hợp, không trùng/lồng nhau. Chỉ duyệt nội dung bên trong hai folder.
-2. Chọn video nguồn chỉ từ `VIDEO_ROOT` **nhưng phải loại trừ thư mục `WORKSPACE` và các bản dựng bên trong**; chọn logo chỉ từ `LOGO_ROOT`. Nếu có nhiều file mơ hồ, hỏi người dùng chọn. Không tìm file ở máy hoặc folder khác.
-3. **Tự tạo `VIDEO_ROOT/WORKSPACE` ngay sau khi xác minh hai thư mục** bằng thao tác Remote Desktop Commander trên CHÍNH máy đã chọn; không cần hỏi thêm tên workspace. Nếu `WORKSPACE` đã có, kiểm tra là thư mục thật (không symlink/junction), giữ nguyên dữ liệu cũ, tuyệt đối không xóa hay ghi đè. Nếu không thể tạo/kiểm tra, BLOCKED.
-4. Sinh `RUN_ID` mới. Tạo `WORKSPACE/tools`, `WORKSPACE/runtime`, `WORKSPACE/cache`, `WORKSPACE/tmp`, `WORKSPACE/runs/<RUN_ID>`. Sao chép helper của plugin vào `WORKSPACE/tools`; không copy sang các thư mục khác.
-5. Chạy `server_binding.py bind` theo `references/SERVER_BINDING.md` trên đúng máy, truyền đúng `deviceId` và `link_id`; helper cũng xác minh/tạo WORKSPACE khi cần. Nếu bind hoặc fingerprint thất bại, BLOCKED.
-6. Lưu `server_binding.json` trong `VIDEO_ROOT/WORKSPACE/runs/<RUN_ID>/`. Chỉ tiếp tục khi `status=bound` và `workspace_root` cũng khớp.
-7. Bắt đầu khảo sát rồi cổng phê duyệt danh mục cài đặt; tuyệt đối không hỏi lại chọn chế độ.
-
-## 3. Luật không nhầm máy — áp dụng cho MỌI thao tác
-
-- Sau khi bind, **mọi Remote Desktop Commander call phải truyền rõ cùng `deviceId` và cùng `link_id`**. Không bỏ tham số dù chỉ có một máy online; không dùng thiết bị mặc định.
-- Điều này áp dụng cho mọi thao tác đọc/ghi file, liệt kê thư mục, shell, cài đặt, process, polling, tương tác, dừng process và kiểm tra cấu hình.
-- Không dùng PID/session trên thiết bị khác. Mọi `read_process_output`, `interact_with_process`, `kill_process`, `force_terminate` phải dùng đúng `deviceId` và `link_id` tạo process.
-- Trước thao tác file trực tiếp hoặc truy vấn cấu hình, chạy `server_binding.py verify` trên đúng máy và xác nhận `status=verified`, đúng `binding_id`, `RUN_ID`, `deviceId`, `link_id`, `VIDEO_ROOT`, `LOGO_ROOT`. Với thao tác đọc/ghi, truyền `--read-path`/`--write-path` tương ứng.
-- **Không bao giờ chạy subprocess trực tiếp** bằng Desktop Commander `start_process`, PowerShell, Python/cmd, kể cả để cài package; chỉ chạy qua `server_binding.py run-command --phase install|preflight|step|repair`. Vẫn dùng Remote Desktop Commander để gọi chính wrapper trên máy đã khóa. Trước khi được duyệt, chỉ được khảo sát read-only qua công cụ đọc, không chạy shell để dò cấu hình. `run-command` kiểm tra `state.json` đúng RUN_ID, phase, install item/step đang RUNNING, các manifest và hash kế hoạch.
-- `run-command` trên Linux yêu cầu `bubblewrap` tin cậy và thực thi trong mount namespace có host root chỉ đọc và `WORKSPACE` là vị trí ghi duy nhất; nếu không khởi chạy được sandbox phải BLOCKED. Trên Windows/macOS phiên bản này **không có sandbox OS đủ tin cậy**, vì vậy lệnh sản xuất sẽ BLOCKED cho tới khi được cung cấp môi trường cô lập hỗ trợ. Không cho phép chế độ bỏ qua sandbox.
-- Mọi lệnh shell chạy qua `server_binding.py run-command`; wrapper xác minh binding, working directory, input/output paths và đặt cache/temp dưới `VIDEO_ROOT/WORKSPACE`. Khai báo đầy đủ `--read-path`, `--write-path`, `--cwd`; command được chạy bằng argument list, không shell ngầm.
-- Với state helper, chỉ gọi qua `server_binding.py run-workflow`; wrapper xác minh binding và tự truyền device/link/fingerprint/folder context vào `workflow_state.py`. Không gọi trực tiếp `workflow_state.py`.
-- Không dùng Python/container cục bộ, filesystem của ChatGPT, Files/Library, browser download hoặc máy khác để xử lý dữ liệu Production. Plugin package có thể được đọc để sao chép helper, nhưng mọi dữ liệu và artefact Production phải được xử lý trên máy chủ đã khóa.
-- Mọi action có tham số `deviceId` đều phải truyền đúng ID đã chọn. Ngoại lệ chỉ dành cho action polling gắn với `call_id` đã tạo trên máy đã khóa (ví dụ `get_tool_result`): dùng nguyên `call_id` và cùng `link_id`, không tạo call mới ở máy khác. `list_devices` không nhận `deviceId`, chỉ dùng lúc chọn máy hoặc kiểm tra lại đúng ID cũ bằng cùng `link_id`; không chọn thiết bị thay thế. Nếu action có thể thực thi trên thiết bị mà không có cách ràng buộc/đối chiếu thì không dùng cho Production.
-- Tên hiển thị không phải khóa. Máy cùng tên nhưng `deviceId` khác là máy khác.
-
-## 4. Luật không nhầm folder
-
-- `VIDEO_ROOT/WORKSPACE` canonical là write-root duy nhất. `VIDEO_ROOT` ngoài WORKSPACE chỉ đọc phim nguồn. Tất cả output, state, cache, temp, venv, model, log và Final phải nằm bên trong.
-- `LOGO_ROOT` canonical là read-only. Không tạo, sửa, xóa, đổi tên hoặc ghi file vào đây.
-- Video nguồn và logo nguồn luôn chỉ đọc.
-- Mọi đường dẫn phải là absolute canonical path; không dùng relative path, `~`, đường dẫn đoán hoặc path từ lịch sử chat.
-- Trước khi ghi, `server_binding.py verify --write-path` phải xác nhận target nằm trong `VIDEO_ROOT/WORKSPACE` (KHÔNG chỉ kiểm tra VIDEO_ROOT). Trước khi đọc, `--read-path` được lấy phim từ `VIDEO_ROOT` và logo từ `LOGO_ROOT`.
-- Symlink/junction trỏ ra ngoài root, root đổi, folder mất hoặc path fingerprint mismatch đều là BLOCKED. Không tự tìm folder khác cùng tên.
-- Nếu người dùng đổi folder, dừng lượt hiện tại và tạo run mới với binding mới. Không trộn state hoặc artefact cũ.
-
-## 5. Quy trình sản xuất và cổng phê duyệt
-
-1. Khảo sát OS, CPU, RAM, GPU/VRAM, dung lượng, quyền và phần mềm trên đúng máy đã khóa.
-2. Tạo `environment_report.json` và `installation_plan.json` trong `VIDEO_ROOT/WORKSPACE/runs/<RUN_ID>/`.
-3. Liệt kê **toàn bộ danh mục cần cài/cập nhật** trong một bảng trước khi cài. Mỗi mục phải có: tên/danh mục, tình trạng hiện tại, phiên bản đích, hành động (cài/cập nhật/đã có-không cần cài), đường dẫn đích tuyệt đối trong `VIDEO_ROOT/WORKSPACE`, nguồn, dung lượng tải/dung lượng đĩa dự kiến, thời gian ước tính, mức rủi ro và phép kiểm tra sau cài. Không gộp các mục mơ hồ thành một dòng; không đưa package đã tương thích vào danh sách cài mà không ghi rõ `already_present`.
-4. Ghi `installation_plan.json`, gọi `set-install-plan`, lấy `plan_sha256`, hiển thị danh sách cuối cùng và **dừng**. Hiển thị đúng một nút `Phê duyệt cài đặt toàn bộ danh mục` (hoặc câu xác nhận tương đương nếu host không hỗ trợ nút). Nút phải gửi lại `RUN_ID` và `plan_sha256`; chỉ sau khi người dùng bấm nút/đưa ra câu phê duyệt rõ ràng mới gọi `approve-install-plan --user-approved --plan-sha256 <hash>`. Không chạy bất kỳ lệnh cài đặt nào trước khi trạng thái APPROVED được ghi trong `approval_manifest.json`.
-5. Sau khi kế hoạch được duyệt, cài **tất cả** mục đã duyệt theo thứ tự trong danh sách, mọi `target_path` nằm dưới `VIDEO_ROOT/WORKSPACE`. Không hỏi duyệt lại từng package. Mỗi package vẫn phải chạy riêng lẻ theo RUNNING → install → version/import/API/smoke test → evidence → PASS; chỉ PASS mới sang package kế. Nếu danh sách, phiên bản, nguồn, dung lượng hoặc đường dẫn đích thay đổi, phê duyệt cũ hết hiệu lực: cập nhật plan, tính hash mới, trình bày lại và xin duyệt lại trước khi cài tiếp.
-6. Chạy smoke test tổng hợp và đánh dấu preflight PASS. Sau đó **không tự động bắt đầu bước 01**: hiển thị một nút `Phê duyệt thực hiện bước 01` và chờ.
-7. Với mỗi bước 01–40: chỉ sau khi người dùng phê duyệt đúng bước hiện tại mới gọi `approve-step --step N --user-approved`, sau đó mới đánh dấu RUNNING và thực hiện đúng một bước. Không thực hiện bước tiếp theo trong cùng lượt thực thi. Khi bước hiện tại hoàn tất, kiểm tra output/evidence/QC, đánh dấu PASS, trình bày báo cáo rồi dừng với đúng một nút phê duyệt cho bước kế tiếp.
-8. Sau bước 20/QC3, không hiển thị nút bước 21 ngay. Dừng để người dùng chọn preset giọng thực tế; sau khi lựa chọn được ghi nhận, hiển thị nút `Phê duyệt thực hiện bước 21`. Việc chọn giọng không tự động phê duyệt bước 21.
-9. Các bước kết thúc QC1–QC8 (09, 16, 20, 24, 28, 32, 36, 39) phải tạo báo cáo QC JSON và gọi `qc-mark --gate K --report <path>` khi đang RUNNING, kiểm chứng report/evidence, rồi mới PASS. Không được SKIPPED các bước mang cổng QC.
-10. Bước 40 là bước cuối, không tạo nút bước 41. Thực hiện 8 QC tại đúng vị trí trong `references/QUALITY.md`; bàn giao video và metadata, không tự đăng YouTube.
-
-### 5.1. Giao diện nút phê duyệt trong ChatGPT
-
-- Khi host hỗ trợ nút tương tác, hiển thị **một nút duy nhất** cho đúng hành động đang chờ. Nút gửi thông điệp xác nhận theo token chính xác: `REVIEW_PHIM_APPROVE_INSTALL_PLAN <RUN_ID> <PLAN_SHA256>` hoặc `REVIEW_PHIM_APPROVE_STEP <RUN_ID> <STEP_2_DIGITS>`. Không hiển thị nút giả chỉ để trang trí.
-- Nút cài đặt chỉ phê duyệt toàn bộ danh mục trong đúng hash kế hoạch; nút bước chỉ phê duyệt đúng một bước kế tiếp. Không dùng một nút chung để phê duyệt nhiều bước.
-- Sau khi hiển thị nút, dừng mọi công việc. Không tự gọi công cụ tiếp theo trong cùng phản hồi.
-- Nếu giao diện hiện tại không hỗ trợ nút thật, hiển thị đúng token tương ứng để người dùng gửi lại; không giả vờ có nút và không hiểu từ “tiếp tục” chung chung là phê duyệt. Trước khi gọi helper, đối chiếu RUN_ID và hash/số bước trong token với state hiện hành.
-- Sau mỗi bước PASS, báo cáo tối thiểu: bước vừa hoàn tất, đầu ra thực tế, đường dẫn trong `VIDEO_ROOT`, phép kiểm tra và bằng chứng, trạng thái QC, lỗi/giới hạn còn lại, bước kế tiếp đang chờ duyệt.
-- Không gộp nhiều bước vào một lần thực thi, kể cả khi người dùng nói “tiếp tục”. Chỉ một lần phê duyệt rõ ràng mới mở khóa đúng một bước.
-
-Mọi manifest, log, QC report và artefact phải ghi cùng `run_id`, `binding_id`, `deviceId`, `link_id`, machine fingerprint, `VIDEO_ROOT` và `LOGO_ROOT`. Không trộn file từ lượt/máy khác.
-
-## 5.2. Chất lượng kịch bản và thời lượng — KHÔNG cố định 7–9 phút
-
-- Không mặc định mỗi phim có review 7–9 phút. Nếu người dùng đã chỉ định thời lượng, dùng đúng mục tiêu đó; nếu chưa, **tính riêng theo thời lượng nguồn, số sự kiện, độ phức tạp quan hệ, nguyên nhân/hậu quả, xung đột và nhịp kể** rồi giải thích lý do. Không lấy mẫu từ `EXAMPLE.md` hoặc số phút từ phiên chat trước.
-- **Bước 16:** xây danh mục `story_events.json` có timestamp, phase, lý do sự kiện quan trọng. **Bước 17:** tạo `editorial_duration_plan.json` gồm target seconds, WPM ước tính, số từ theo mục tiêu và phân bổ ngân sách từng phần. **Bước 18–19:** kiểm tra nội dung V1/V2 có bao phủ các sự kiện cần thiết. **Bước 20:** tạo `event_coverage.json` với câu thực trong V2 và đăng ký `editorial_audit` tại QC3.
-- QC3 **phải tính lại từ tệp thực**: số từ cách nhau bởi dấu trắng, thời lượng lời kể ước tính, source/event coverage và hash. Không PASS kịch bản ngắn hơn mục tiêu từ nguồn phim khi chưa chỉnh lý có căn cứ. Không thêm filler, không bịa tình tiết hoặc cố kéo dài vô nghĩa.
-- **Bước 24/QC4** phải đo WAV master thật, đối chiếu mục tiêu của QC3; WAV ngắn hơn kế hoạch không được chuyển thẳng sang timeline. Từ bước 25 trở đi giữ đủ lời kể đã được duyệt; QC5/QC8 không cho sử dụng WAV đã thay đổi sau QC4.
-- Nếu cần viết lại sau QC3/QC4, chỉ sử dụng `reopen-editorial --from-step 16|17 --user-approved` **sau khi người dùng phê duyệt riêng**; lưu dấu bài cũ và yêu cầu duyệt từng bước lại. Không tự quay về viết lại hoặc xóa state.
-- Xem chi tiết file mẫu, tiêu chí và giới hạn tại **`references/SCRIPT_DURATION.md`**. Mọi tệp audit đều nằm trong WORKSPACE đúng RUN_ID.
-
-## 6. BLOCKED — không tự failover
-
-Nếu máy chủ mất kết nối, `deviceId` đổi/mất, fingerprint không khớp, đường dẫn thay đổi hoặc binding verify thất bại:
-
-1. Dừng ngay thao tác đang chạy; không tiếp tục ghi hoặc render.
-2. Ghi lỗi và bằng chứng trong `VIDEO_ROOT` nếu máy vẫn truy cập được.
-3. Hiển thị chẩn đoán, nguyên nhân đã xác minh/giả thuyết, phương án sửa, rủi ro, yêu cầu phê duyệt và tiêu chí kiểm tra. Lệnh sửa có rủi ro trung bình/cao/rất cao cần `approve-repair` cho đúng blocker_id trước khi chạy; lệnh sửa cũng phải đi qua sandbox và cổng `--phase repair`.
-4. Chỉ được kiểm tra lại `list_devices` bằng đúng `link_id` cũ để xem chính `deviceId` đã chọn có online trở lại hay không.
-5. Nếu đúng `deviceId` online, verify lại machine fingerprint và folder binding. Chỉ tiếp tục nếu PASS.
-6. Nếu `deviceId` khác, fingerprint khác hoặc máy không online: dừng và hỏi người dùng. Không chọn máy khác dù cùng tên, cùng cấu hình hoặc đang online.
-7. Chỉ người dùng mới được yêu cầu đổi máy. Khi đổi máy, phải bắt đầu lượt mới và bind lại; không chuyển state, PID, cache, temp hay output của lượt cũ sang máy mới.
-
-Không được tự chuyển server để né lỗi, không tự đổi account, không tự đổi folder, không xóa binding để mở khóa. Chỉ tiếp tục bước hiện tại sau khi lỗi được sửa và kiểm chứng PASS.
-
-## 7. Tiêu chuẩn hoàn tất
-
-- Giữ nguyên SOP 11 giai đoạn, 40 bước, 8 QC và các điểm dừng.
-- Giữ nguyên video/logo nguồn.
-- Toàn bộ artefact Production ở trong `VIDEO_ROOT`; `LOGO_ROOT` không thay đổi.
-- Binding server/folder đúng từ đầu đến cuối; tất cả process thuộc đúng `deviceId`.
-- Báo cáo rõ codec, độ phân giải, fps, duration, audio, subtitle, logo, QC, hash, hạn chế và tình trạng quyền.
-- Không tuyên bố đã nghiệm thu nếu chưa kiểm tra trên chính máy chủ đã khóa.
-
-## WORKSPACE — nguồn sự thật duy nhất về vị trí ghi
-
-- Bắt buộc đọc `references/WORKSPACE_LAYOUT.md` trước khi thao tác. Tài liệu này có ưu tiên cao nhất về cấu trúc WORKSPACE, ghi dữ liệu và giới hạn đường dẫn; supersede mọi ví dụ thư mục `.review-phim` còn ở tài liệu cũ.
-- Dữ liệu sản xuất mới không ghi trong `.review-phim` hay thư mục ẩn khác ở VIDEO_ROOT. Không tự chuyển/migrate dữ liệu cũ vào WORKSPACE.
-- Khi VIDEO_ROOT chứa nhiều phim, phải xác định đúng phim đang được chọn rồi mới sản xuất; không dùng dữ liệu từ phim khác.
-- Giữ nguyên 1 lần duyệt danh mục cài đặt + 1 lần duyệt cho từng bước 01–40 + dừng chọn giọng sau bước 20; không tự chạy bước tiếp.
+## Quy trình BLOCKED
+Khi bất kỳ preflight, approval, installer, sandbox hoặc bước nào bị chặn: nêu mã lỗi, triệu chứng, bằng chứng, phương án sửa, rủi ro và tiêu chí xác minh. Không chạy tiếp bước sau cho tới khi sửa xong, retest PASS và phê duyệt đúng cổng. Không dùng môi trường/máy chủ/thư mục khác để né lỗi. Giữ audit theo `run_id`, `binding_id`, `deviceId`, `link_id`, machine fingerprint và hai root.
