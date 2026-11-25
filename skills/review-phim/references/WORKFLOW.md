@@ -1,18 +1,18 @@
 # Quy trình chuẩn: 11 giai đoạn · 40 bước
 
 ## Khởi động — đã chọn thư mục trước khi vào 40 bước
-Trước khi preflight và trước bước 01, luồng Production bắt buộc đã hoàn thành: chọn máy chủ → chọn `VIDEO_ROOT` (thư mục phim) → chọn `LOGO_ROOT` (thư mục logo hoặc xác nhận không dùng) → xác minh hai thư mục → khảo sát/cấu hình/cài đặt trong phạm vi đã chọn. Không hỏi hai thư mục sau preflight. Tất cả đầu ra của 40 bước phải nằm trong workspace con của `VIDEO_ROOT`; `LOGO_ROOT` chỉ đọc. Phim gốc và logo gốc không bị sửa.
+Trước khi preflight và trước bước 01, luồng Production bắt buộc đã hoàn thành: chọn máy chủ → chọn `VIDEO_ROOT` (thư mục phim) → chọn `LOGO_ROOT` (thư mục logo hoặc xác nhận không dùng) → xác minh hai thư mục → khảo sát/cấu hình/cài đặt trong phạm vi đã chọn. Không hỏi hai thư mục sau preflight. Ngay sau khi chọn máy chủ và hai thư mục, tạo WORKSPACE tự động rồi mới bind, khảo sát và cài đặt. Không có lựa chọn chế độ hoạt động. Tất cả đầu ra của 40 bước phải nằm trong `VIDEO_ROOT/WORKSPACE/runs/<RUN_ID>/`; `LOGO_ROOT` chỉ đọc. Phim gốc và logo gốc không bị sửa.
 
-Sau preflight PASS, thực hiện **đúng thứ tự 01–40**. Không chạy song song, không gộp lệnh qua nhiều bước, không chuẩn bị trước artefact của bước sau. Mỗi bước chỉ PASS sau khi đủ đầu ra và bằng chứng trong `VIDEO_ROOT`. RUNNING/PARTIAL/BLOCKED/STALE không cho phép sang bước kế. Khi lỗi, dừng, hiển thị đề xuất sửa, sửa trong `VIDEO_ROOT`, xác minh lại bước hiện tại trước khi tiếp tục. Điểm dừng chọn giọng trước bước 21 là bắt buộc.
+Sau preflight PASS, dừng chờ người dùng phê duyệt bước 01. Với từng bước N, chỉ thực thi sau khi người dùng phê duyệt riêng bước N và chỉ khi bước N PASS mới hiển thị nút duyệt bước N+1. Thực hiện **đúng thứ tự 01–40**. Không chạy song song, không gộp lệnh qua nhiều bước, không chuẩn bị trước artefact của bước sau. Mỗi bước chỉ PASS sau khi đủ đầu ra và bằng chứng trong `VIDEO_ROOT/WORKSPACE`. Các bước 09/16/20/24/28/32/36/39 còn phải có QC report được đăng ký bằng `qc-mark` trước khi PASS. RUNNING/PARTIAL/BLOCKED/STALE không cho phép sang bước kế. Khi lỗi, dừng, hiển thị đề xuất sửa, sửa trong `VIDEO_ROOT`, xác minh lại bước hiện tại trước khi tiếp tục. Điểm dừng chọn giọng trước bước 21 là bắt buộc.
 
 Mỗi bước ghi báo cáo có: mục tiêu, đầu vào đã xác minh, thao tác theo thứ tự, đầu ra thực tế, bằng chứng, phép kiểm tra, trạng thái và lỗi/giới hạn. Không đánh dấu PASS chỉ vì lệnh kết thúc với exit code 0.
 
 ## Giai đoạn 1 — Tiếp nhận và chuẩn bị (01–06)
 01. Xác nhận lại `VIDEO_ROOT` và `LOGO_ROOT` đã chọn ở đầu lượt. Xác minh video nguồn hợp lệ trong `VIDEO_ROOT`, logo hợp lệ trong `LOGO_ROOT` (hoặc không dùng logo theo xác nhận). Nếu nhiều file mơ hồ, hỏi chọn. Không lấy đường dẫn từ lần trước hoặc thư mục khác.
 02. Kiểm tra nguồn bằng ffprobe: streams, duration, fps/timebase, kích thước, audio/subtitle tracks, VFR/CFR và fingerprint (size, mtime, SHA256 nếu khả thi). Chỉ đọc nguồn; bảo toàn file gốc.
-03. Tạo workspace riêng cho run hiện tại **bên trong `VIDEO_ROOT`**, ví dụ `VIDEO_ROOT/.review-phim/runs/<run_id>/`; tạo inputs manifest, state, logs, reports và thư mục artefact. Không mở/tìm checkpoint cũ, không ghi đè dữ liệu cũ hoặc phim gốc.
+03. Xác minh/hoàn thiện workspace riêng cho run hiện tại **bên trong `VIDEO_ROOT/WORKSPACE`**, ví dụ `VIDEO_ROOT/WORKSPACE/runs/<run_id>/`; tạo inputs manifest, state, logs, reports và thư mục artefact. Không mở/tìm checkpoint cũ, không ghi đè dữ liệu cũ hoặc phim gốc.
 04. Xác minh runtime thực tế dùng cho lượt này: Python/venv, FFmpeg/FFprobe, OpenCV, PySceneDetect, MoviePy, NumPy, SoundFile, Pillow, PyTorch và phiên bản thực tế. Mọi venv/output/log/cache đều ở trong `VIDEO_ROOT`.
-05. Kiểm tra Faster-Whisper Large-v3 Turbo/Small, CTranslate2 và VieNeu-TTS; xác minh model cache, revision/hash/license khi biết, API/preset có thật và khả năng load. Cache phải nằm trong `VIDEO_ROOT`; không mặc định giọng sản xuất.
+05. Kiểm tra Faster-Whisper Large-v3 Turbo/Small, CTranslate2 và VieNeu-TTS; xác minh model cache, revision/hash/license khi biết, API/preset có thật và khả năng load. Cache phải nằm trong `VIDEO_ROOT/WORKSPACE`; không mặc định giọng sản xuất.
 06. Chạy smoke test thực tế theo thứ tự: decode/encode nhỏ, import/infer ASR, load TTS và audio test kỹ thuật ngắn, scene detection và đọc/ghi workspace. Ghi lỗi, RAM/VRAM, thời gian. Không qua bước nếu công cụ thiết yếu chưa chạy. Kết quả TTS ở đây không phải lựa chọn giọng sản xuất.
 
 ## Giai đoạn 2 — Âm thanh và transcript (07–09)
