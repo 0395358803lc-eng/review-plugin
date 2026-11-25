@@ -1,4 +1,4 @@
-# review-phim 1.2.8
+# review-phim 1.2.9
 
 Phiên bản kiểm soát **máy chủ → thư mục phim → thư mục logo → WORKSPACE**. Không hỏi menu chọn chế độ khi người dùng gọi plugin để sản xuất. Tự tạo `VIDEO_ROOT/WORKSPACE` trên đúng máy chủ; tất cả output/runtime/model/cache/temp/manifest trong WORKSPACE, logo và phim gốc chỉ đọc.
 
@@ -9,3 +9,11 @@ Phiên bản kiểm soát **máy chủ → thư mục phim → thư mục logo �
 - Không tự đăng YouTube, không tự chuyển máy/folder. Không tự khẳng định nút UI được bảo đảm hiển thị trên mọi giao diện.
 
 Xem `skills/review-phim/references/EXECUTION_SECURITY.md`, `WORKFLOW.md`, `SERVER_BINDING.md` và các bài kiểm thử.
+
+
+## Review dài/ngắn theo từng phim (1.2.9)
+
+- Không mặc định review 7–9 phút. Bước 16 ghi story events; bước 17 lập thời lượng mục tiêu theo phim (ưu tiên số phút người dùng đưa ra), tốc độ TTS ước tính và phân bổ thời lượng từng phần.
+- Bước 20/QC3 đọc kịch bản V2 thật, đếm đơn vị cách bằng dấu trắng, ước tính thời lượng, kiểm chứng trích dẫn cho các sự kiện bắt buộc, khóa hash của dossier/plan/script/coverage.
+- Bước 24/QC4 đo WAV PCM thật; audio ngắn hơn mục tiêu phải chỉnh sửa có phê duyệt. Có `reopen-editorial` để quay lại bước 16 hoặc 17, lưu revision và buộc duyệt lại từng bước. QC5/QC8 kiểm tra WAV không bị thay đổi.
+- Tất cả giữ nguyên quy tắc binding, WORKSPACE và phê duyệt; xem `skills/review-phim/references/SCRIPT_DURATION.md`. Kiểm tra thời lượng và quote không thay thế việc xem/nghe, đánh giá semantic hay quyền sử dụng footage.

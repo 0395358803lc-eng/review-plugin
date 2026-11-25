@@ -1,4 +1,4 @@
-# Vận hành Review-Phim 1.2.8 — phạm vi thư mục và phê duyệt bắt buộc
+# Vận hành Review-Phim 1.2.9 — phạm vi thư mục và phê duyệt bắt buộc
 
 ## 1. Thứ tự khởi động duy nhất
 1. Liệt kê máy chủ Remote Desktop Commander và chờ người dùng chọn.
@@ -94,3 +94,10 @@ Khi có lỗi: dừng đúng mục/bước hiện tại; hiển thị lỗi, exi
 - Một phần mềm đã có vẫn phải chạy kiểm chứng phiên bản/import/smoke test trước khi đánh dấu PASS; không auto-pass từ trường `already_present`.
 - Mỗi QC 01–08 phải có report JSON riêng với checks thật và evidence files đã hash. Thiếu hoặc report thay đổi → không PASS.
 - Nếu cần bổ sung package sau khi hoàn thành các mục đầu tiên, giữ nguyên prefix đã PASS, ghi danh sách đã sửa, tính hash mới, báo cáo và xin duyệt lại trong cùng RUN_ID. Không sửa mục đã hoàn tất hoặc thay đổi danh mục khi một item còn RUNNING.
+
+
+## 10. Kiểm soát thời lượng kịch bản theo từng phim
+- Trước khi viết V1, không mặc định 7–9 phút. Bắt buộc đọc `references/SCRIPT_DURATION.md` rồi tạo danh mục sự kiện nguồn (bước 16) và bản phân bổ thời lượng/word target riêng phim (bước 17). Nếu người dùng yêu cầu số phút thì dùng số đó, không tự đổi.
+- QC3 (bước 20) chạy kiểm tra tài liệu thực qua `qc-mark --gate 3` với `editorial_audit`; tình tiết required bị bỏ sót, trích dẫn không tồn tại, hoặc số từ dự kiến quá ngắn so với mục tiêu đều không được PASS.
+- QC4 (bước 24) đo WAV thật qua `tts_duration_audit` trước khi dựng; ngắn/dài bất thường phải đề xuất sửa kịch bản hoặc thời lượng và xin duyệt `reopen-editorial --from-step 16|17` khi cần, không vượt bước.
+- Bước 25–39 phải giữ đủ lời kể đã đạt QC4. Đo duration timeline và Final bằng dữ liệu thực, không cắt ngắn theo số phút quen thuộc.

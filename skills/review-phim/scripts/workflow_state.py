@@ -13,13 +13,15 @@ import hashlib
 import json
 import os
 import platform
+import wave
+import shutil
 import socket
 import subprocess
 import tempfile
 import uuid
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 STEP_COUNT = 40
 COMPLETE = {"pass", "skipped"}
 
@@ -202,6 +204,183 @@ def normalize_plan_items(items, video_root):
 QC_GATES = {9: 1, 16: 2, 20: 3, 24: 4, 28: 5, 32: 6, 36: 7, 39: 8}
 
 
+def _positive_number(value, field, low=0, high=1_000_000):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low < value <= high:
+        raise ValueError(f"SCRIPT_DURATION_INVALID_{field}: expected number in ({low}, {high}]")
+    return float(value)
+
+
+def _read_run_json(data, raw, label):
+    base = workspace_root(Path(data["video_root"])) / "runs" / data["run_id"]
+    path = within(Path(raw), base, label)
+    if not path.is_file():
+        raise ValueError(f"{label.upper().replace(' ', '_')}_MISSING: {path}")
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(doc, dict) or doc.get("run_id") != data["run_id"]:
+        raise ValueError(f"{label.upper().replace(' ', '_')}_WRONG_RUN")
+    return path, doc
+
+
+def _normalize_review_text(text):
+    return " ".join(text.casefold().split())
+
+
+def audit_review_script(data, declaration):
+    """Machine-check script length and evidence-linked plot coverage for QC3.
+
+    Does not replace the human semantic review of script or source film.
+    """
+    if not isinstance(declaration, dict) or set(declaration) != {"dossier", "plan", "script", "coverage"}:
+        raise ValueError("QC3_EDITORIAL_AUDIT_REQUIRED: dossier, plan, script and coverage paths must be declared")
+    dossier_file, dossier = _read_run_json(data, declaration["dossier"], "Story dossier")
+    plan_file, plan = _read_run_json(data, declaration["plan"], "Editorial duration plan")
+    coverage_file, coverage = _read_run_json(data, declaration["coverage"], "Script event coverage")
+    base = workspace_root(Path(data["video_root"])) / "runs" / data["run_id"]
+    script_file = within(Path(declaration["script"]), base, "Review script V2")
+    if not script_file.is_file() or script_file.suffix.lower() != ".txt":
+        raise ValueError("QC3_SCRIPT_V2_MISSING: require a real UTF-8 TXT script")
+    script_text = script_file.read_text(encoding="utf-8-sig").strip()
+    word_count = len(script_text.split())  # Vietnamese whitespace-delimited tokens, NOT linguistic word segmentation.
+    if word_count < 80:
+        raise ValueError("QC3_SCRIPT_TOO_SHORT: script content is insufficient for a review")
+    script_norm = _normalize_review_text(script_text)
+    source_sec = _positive_number(dossier.get("source_duration_sec"), "SOURCE_DURATION", low=30)
+    events = dossier.get("events")
+    if not isinstance(events, list) or not events:
+        raise ValueError("QC3_STORY_EVENTS_MISSING: step 16 must index actual source events")
+    by_id = {}
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError("QC3_EVENT_INVALID")
+        event_id = event.get("id")
+        if not isinstance(event_id, str) or not event_id.strip() or event_id in by_id:
+            raise ValueError("QC3_EVENT_ID_DUPLICATE_OR_MISSING")
+        sec = event.get("source_start_sec")
+        if isinstance(sec, bool) or not isinstance(sec, (int, float)) or not 0 <= sec <= source_sec:
+            raise ValueError("QC3_EVENT_TIMESTAMP_INVALID")
+        if len(str(event.get("summary", "")).strip()) < 18:
+            raise ValueError("QC3_EVENT_SUMMARY_MISSING")
+        if not str(event.get("phase", "")).strip():
+            raise ValueError("QC3_EVENT_PHASE_MISSING")
+        if not isinstance(event.get("required"), bool):
+            raise ValueError("QC3_EVENT_REQUIRED_FLAG_MISSING")
+        by_id[event_id] = event
+    required = {key for key, e in by_id.items() if e["required"]}
+    if not required:
+        raise ValueError("QC3_NO_REQUIRED_EVENTS")
+    # Source coverage must be plausible, not just one invented plot point for a feature film.
+    min_indexed = max(3, min(12, int(source_sec / 900)))
+    if len(events) < min_indexed:
+        raise ValueError(f"QC3_DOSSIER_UNDERINDEXED: {len(events)} events; inspect at least {min_indexed} across the source")
+    if not isinstance(coverage.get("events"), list):
+        raise ValueError("QC3_EVENT_COVERAGE_MISSING")
+    seen, proof_quotes = set(), set()
+    for entry in coverage["events"]:
+        if not isinstance(entry, dict):
+            raise ValueError("QC3_EVENT_COVERAGE_INVALID")
+        key = entry.get("event_id")
+        if key not in by_id or key in seen:
+            raise ValueError("QC3_COVERAGE_EVENT_UNKNOWN_OR_DUPLICATE")
+        seen.add(key)
+        if entry.get("status") == "covered":
+            quote = _normalize_review_text(str(entry.get("quote", "")))
+            if len(quote) < 18 or quote not in script_norm or quote in proof_quotes:
+                raise ValueError("QC3_COVERAGE_QUOTE_UNVERIFIED: quote must be unique and present in actual V2 script")
+            proof_quotes.add(quote)
+        elif entry.get("status") == "omitted":
+            if by_id[key]["required"] or len(str(entry.get("reason", "")).strip()) < 12:
+                raise ValueError("QC3_REQUIRED_EVENT_OMITTED_OR_REASON_MISSING")
+        else:
+            raise ValueError("QC3_COVERAGE_STATUS_INVALID")
+    if required - seen or any(entry.get("status") != "covered" for entry in coverage["events"] if entry.get("event_id") in required):
+        raise ValueError("QC3_REQUIRED_PLOT_GAP: essential story events missing from V2 script")
+    target_sec = _positive_number(plan.get("target_duration_sec"), "TARGET_DURATION", low=30)
+    rate_wpm = _positive_number(plan.get("estimated_tts_wpm"), "TTS_RATE", low=60, high=420)
+    if plan.get("target_source") not in {"user", "story_derived"}:
+        raise ValueError("QC3_TARGET_SOURCE_REQUIRED: user target or story-derived target")
+    if len(str(plan.get("rationale", "")).strip()) < 35:
+        raise ValueError("QC3_TARGET_RATIONALE_REQUIRED: explain event density, film and pacing")
+    if plan.get("dossier_sha256") != sha256(dossier_file):
+        raise ValueError("QC3_DOSSIER_PLAN_MISMATCH")
+    sections = plan.get("sections")
+    if not isinstance(sections, list) or len(sections) < 3:
+        raise ValueError("QC3_SECTION_BUDGET_REQUIRED: use at least three justified sections")
+    names, section_sum = set(), 0
+    for section in sections:
+        if not isinstance(section, dict) or not str(section.get("name", "")).strip() or section["name"] in names:
+            raise ValueError("QC3_SECTION_INVALID_OR_DUPLICATE")
+        names.add(section["name"])
+        section_sum += _positive_number(section.get("duration_sec"), "SECTION_DURATION")
+    if abs(section_sum - target_sec) > max(2, target_sec * .03):
+        raise ValueError("QC3_SECTION_BUDGET_MISMATCH")
+    estimate = word_count / rate_wpm * 60
+    if estimate < target_sec * .80:
+        raise ValueError(f"QC3_SCRIPT_TOO_SHORT_FOR_TARGET: expected {target_sec:.1f}s, estimated {estimate:.1f}s at {rate_wpm:.1f} WPM; review missing scenes before rewriting")
+    if estimate > target_sec * 1.20:
+        raise ValueError(f"QC3_SCRIPT_TOO_LONG_FOR_TARGET: expected {target_sec:.1f}s, estimated {estimate:.1f}s; revise pacing or justify a new target")
+    files = {name: {"path": str(path), "sha256": sha256(path)} for name, path in
+             (("dossier", dossier_file), ("plan", plan_file), ("script", script_file), ("coverage", coverage_file))}
+    return {"word_count_whitespace": word_count, "estimated_duration_sec": round(estimate, 2),
+            "target_duration_sec": target_sec, "estimated_tts_wpm": rate_wpm,
+            "target_source": plan["target_source"], "source_duration_sec": source_sec,
+            "required_events": len(required), "verified_quotes": len(proof_quotes),
+            "files": files}
+
+
+def verify_editorial_audit(data):
+    editorial = data.get("qc_gates", {}).get("3", {}).get("editorial_audit")
+    if not isinstance(editorial, dict):
+        raise ValueError("QC3_EDITORIAL_AUDIT_MISSING")
+    files = editorial.get("files", {})
+    if set(files) != {"dossier", "plan", "script", "coverage"}:
+        raise ValueError("QC3_EDITORIAL_FILES_MISSING")
+    paths = {k: v["path"] for k, v in files.items()}
+    for rec in files.values():
+        path = within(Path(rec["path"]), workspace_root(Path(data["video_root"])), "Editorial evidence")
+        if not path.is_file() or sha256(path) != rec["sha256"]:
+            raise ValueError("QC3_EDITORIAL_SOURCE_CHANGED: previously audited script/plan/evidence modified")
+    actual = audit_review_script(data, paths)
+    if actual != editorial:
+        raise ValueError("QC3_EDITORIAL_AUDIT_CHANGED")
+    return editorial
+
+
+def audit_tts_master(data, declaration):
+    if not isinstance(declaration, dict) or set(declaration) != {"master_wav"}:
+        raise ValueError("QC4_TTS_DURATION_AUDIT_REQUIRED: master_wav must be supplied")
+    editorial = verify_editorial_audit(data)
+    base = workspace_root(Path(data["video_root"])) / "runs" / data["run_id"]
+    master = within(Path(declaration["master_wav"]), base, "TTS master WAV")
+    if not master.is_file():
+        raise ValueError("QC4_TTS_MASTER_NOT_FOUND")
+    try:
+        with wave.open(str(master), "rb") as wav:
+            audio_sec = wav.getnframes() / wav.getframerate()
+            audio_params = {"channels": wav.getnchannels(), "sample_rate": wav.getframerate(),
+                            "frames": wav.getnframes()}
+    except (wave.Error, ZeroDivisionError, EOFError) as exc:
+        raise ValueError("QC4_TTS_WAV_UNREADABLE: require genuine PCM WAV and verify duration") from exc
+    if audio_sec <= 0:
+        raise ValueError("QC4_TTS_EMPTY")
+    target_sec = editorial["target_duration_sec"]
+    if audio_sec < target_sec * .80 or audio_sec > target_sec * 1.20:
+        raise ValueError(f"QC4_TTS_DURATION_MISMATCH: actual {audio_sec:.1f}s vs planned {target_sec:.1f}s; revise script and obtain renewed step approvals before moving on")
+    return {"master_wav": str(master), "master_sha256": sha256(master),
+            "actual_duration_sec": round(audio_sec, 3), "target_duration_sec": target_sec,
+            "audio_params": audio_params, "qc3_script_sha256": editorial["files"]["script"]["sha256"]}
+
+
+def verify_tts_master(data):
+    saved = data.get("qc_gates", {}).get("4", {}).get("tts_duration_audit")
+    if not saved:
+        raise ValueError("QC4_TTS_DURATION_AUDIT_MISSING")
+    actual = audit_tts_master(data, {"master_wav": saved["master_wav"]})
+    if actual != saved:
+        raise ValueError("QC4_TTS_AUDIO_CHANGED: narration/master no longer matches approved audit")
+    return actual
+
+
+
 def ensure_qc_passed(data, step):
     gate = QC_GATES.get(step)
     if gate is None:
@@ -216,6 +395,12 @@ def ensure_qc_passed(data, step):
         f = within(Path(item["path"]), workspace_root(Path(data["video_root"])), "QC evidence")
         if not f.is_file() or sha256(f) != item["sha256"]:
             raise ValueError(f"QC{gate}_EVIDENCE_CHANGED: report evidence was modified")
+    if gate == 3:
+        verify_editorial_audit(data)
+    elif gate == 4:
+        verify_tts_master(data)
+    elif gate in {5, 8}:
+        verify_tts_master(data)
 
 
 def validate_command_gate(data, phase, step=None, item_id=None):
@@ -866,17 +1051,87 @@ def cmd_qc_mark(a):
         or not isinstance(paths, list) or not paths):
         raise ValueError("QC_REPORT_INVALID: require gate/step/run, two actual checks and evidence files")
     actual = evidence_records([Path(x) for x in paths], Path(state["video_root"]))
+    # QC3/QC4 cannot be self-certified: recompute from real script and PCM master.
+    editorial_audit = audit_review_script(state, payload.get("editorial_audit")) if a.gate == 3 else None
+    tts_duration_audit = audit_tts_master(state, payload.get("tts_duration_audit")) if a.gate == 4 else None
+    if a.gate in {5, 8}:
+        verify_tts_master(state)  # Refuse timelines/final delivery based on changed narration.
     def change(data):
         rec = ensure_current(data, required_step)
         if rec["status"] != "running":
             raise ValueError("QC_REQUIRES_RUNNING_STEP")
-        data.setdefault("qc_gates", {})[str(a.gate)] = {
+        record = {
             "gate": a.gate, "step": required_step, "status": "pass",
             "report": str(report), "report_sha256": sha256(report),
             "evidence": actual, "checked_at": now(),
         }
+        if editorial_audit is not None:
+            record["editorial_audit"] = editorial_audit
+        if tts_duration_audit is not None:
+            record["tts_duration_audit"] = tts_duration_audit
+        data.setdefault("qc_gates", {})[str(a.gate)] = record
     mutate_state(path, change)
     print(json.dumps({"status":"pass", "gate":a.gate}, ensure_ascii=False))
+
+
+
+def cmd_reopen_editorial(a):
+    """User-approved rewind for short/incorrect reviews; no silent step bypass.
+
+    Keep one run, preserve hashes and copies of earlier editorial evidence, and
+    force fresh approvals for every reopened step. This is NOT auto-resume.
+    """
+    path, current = state_path(a)
+    if not a.user_approved or len(a.reason.strip()) < 18:
+        raise ValueError("EDITORIAL_REOPEN_APPROVAL_REQUIRED: explicit user consent and a detailed reason are required")
+    if a.from_step not in {16, 17}:
+        raise ValueError("EDITORIAL_REOPEN_START_INVALID: choose step 16 (dossier) or 17 (script)")
+    if current_step(current) is not None and current_step(current) <= a.from_step:
+        raise ValueError("EDITORIAL_REOPEN_NOT_NEEDED: current step has not advanced past requested start")
+    if current["preflight"]["status"] != "pass":
+        raise ValueError("EDITORIAL_REOPEN_PREFLIGHT_REQUIRED")
+    ev = evidence_records([a.evidence], Path(current["video_root"]))
+    def rewind(data):
+        prior = current_step(data)
+        saved_editorial = data.get("qc_gates", {}).get("3", {}).get("editorial_audit", {})
+        saved_audio = data.get("qc_gates", {}).get("4", {}).get("tts_duration_audit", {})
+        revision_id = uuid.uuid4().hex
+        revisions_dir = workspace_root(Path(data["video_root"])) / "runs" / data["run_id"] / "revisions" / revision_id
+        # A user may have found new facts; archive earlier source evidence before it changes.
+        archived = {}
+        for key, item in saved_editorial.get("files", {}).items():
+            old = within(Path(item["path"]), workspace_root(Path(data["video_root"])), "Prior editorial file")
+            if old.is_file() and sha256(old) == item["sha256"]:
+                if revisions_dir.is_symlink() or getattr(revisions_dir, "is_junction", lambda: False)():
+                    raise RuntimeError("EDITORIAL_ARCHIVE_LINK_FORBIDDEN")
+                revisions_dir.mkdir(parents=True, exist_ok=True)
+                dest = within(revisions_dir / (key + old.suffix), workspace_root(Path(data["video_root"])), "Editorial archive")
+                shutil.copyfile(old, dest)
+                archived[key] = {"path": str(dest), "sha256": sha256(dest)}
+        data.setdefault("editorial_revision_history", []).append({
+            "revision_id": revision_id, "at": now(), "from_step": a.from_step,
+            "previous_next_step": prior, "reason": a.reason, "evidence": ev,
+            "previous_editorial": saved_editorial,
+            "previous_tts": saved_audio, "archive": archived,
+            "prior_blocker": data.get("blocker"),
+        })
+        for rec in data["steps"][a.from_step-1:]:
+            rec.setdefault("history", []).append({"at": now(), "status": "reopened", "reason": a.reason,
+                "revision_id": revision_id})
+            rec["status"] = "pending"
+            rec["evidence"] = []
+            rec.pop("note", None)
+        for i in range(a.from_step, STEP_COUNT+1):
+            data.get("step_approvals", {}).pop(str(i), None)
+        earliest_qc = 2 if a.from_step <= 16 else 3
+        for gate in range(earliest_qc, 9):
+            data.get("qc_gates", {}).pop(str(gate), None)
+        data["voice_selection"] = None
+        data["blocker"] = None
+    saved = mutate_state(path, rewind)
+    print(json.dumps({"status": "editorial_reopened", "from_step": a.from_step,
+                      "next_step": current_step(saved), "next_action": next_action(saved),
+                      "reapprovals_required": True}, ensure_ascii=False))
 
 
 def cmd_select_voice(a):
@@ -921,6 +1176,8 @@ def cmd_status(a):
         },
         "next_step": step,
         "step_approval": approval,
+        "editorial_duration": data.get("qc_gates", {}).get("3", {}).get("editorial_audit"),
+        "tts_duration": data.get("qc_gates", {}).get("4", {}).get("tts_duration_audit"),
         "next_action": next_action(data),
         "blocker": data.get("blocker"),
     }, ensure_ascii=False, indent=2))
@@ -1013,6 +1270,12 @@ def build_parser():
     q.add_argument("--state", required=True, type=Path); binding_args(q)
     q.add_argument("--gate", required=True, type=int); q.add_argument("--report", required=True, type=Path)
     q.set_defaults(func=cmd_qc_mark)
+
+    q = sub.add_parser("reopen-editorial")
+    q.add_argument("--state", required=True, type=Path); binding_args(q)
+    q.add_argument("--from-step", required=True, type=int, choices=[16,17]); q.add_argument("--reason", required=True)
+    q.add_argument("--evidence", required=True, type=Path); q.add_argument("--user-approved", action="store_true")
+    q.set_defaults(func=cmd_reopen_editorial)
 
     q = sub.add_parser("select-voice")
     q.add_argument("--state", required=True, type=Path); binding_args(q)

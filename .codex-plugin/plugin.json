@@ -18,8 +18,8 @@
   },
   "apps": "./.app.json",
   "name": "review-phim",
-  "version": "1.2.8",
-  "description": "Review-Phim: kh\u00f3a m\u00e1y ch\u1ee7/th\u01b0 m\u1ee5c, ph\u00ea duy\u1ec7t c\u00e0i \u0111\u1eb7t v\u00e0 t\u1eebng b\u01b0\u1edbc; kh\u00f3a l\u1ec7nh, b\u1eaft bu\u1ed9c QC v\u00e0 c\u00f4 l\u1eadp ghi WORKSPACE.",
+  "version": "1.2.9",
+  "description": "Review-Phim: kh\u00f3a m\u00e1y ch\u1ee7/WORKSPACE, duy\u1ec7t t\u1eebng b\u01b0\u1edbc; QC3 ki\u1ec3m tra k\u1ecbch b\u1ea3n theo \u0111\u1ed9 d\u00e0i phim, QC4 \u0111\u1ed1i chi\u1ebfu WAV th\u1eadt, gi\u1eef 8 QC.",
   "author": {
     "name": "SQY",
     "email": "hareriatoele@gmail.com"

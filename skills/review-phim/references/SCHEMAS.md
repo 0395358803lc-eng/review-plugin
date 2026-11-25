@@ -38,7 +38,7 @@ Tất cả JSON UTF-8. WORKSPACE tự động được tạo trong thư mục ph
 | 11 | youtube/title.txt, description.txt, hashtags.txt, thumbnail.png nếu tạo, delivery_manifest.json |
 
 ## 5. State và hợp đồng phê duyệt
-`state.json` nằm trong run workspace. Schema version 8; `server_binding.json` schema 3. WORKSPACE có path và folder identity trong state/binding. Mỗi Production tạo `run_id` và state mới; không auto-resume state schema cũ.
+`state.json` nằm trong run workspace. Schema version 9; `server_binding.json` schema 3. WORKSPACE có path và folder identity trong state/binding. Mỗi Production tạo `run_id` và state mới; không auto-resume state schema cũ.
 
 ### Preflight / danh mục cài đặt
 - Preflight là cổng 0. Trước khi cài phải có `installation_plan.configured=true`, `plan_sha256` và `approval.status=approved` khớp hash.
@@ -73,3 +73,13 @@ Kèm đường dẫn file đã kiểm tra (tất cả trong VIDEO_ROOT), duratio
 - `blocker.repair_approved`: phê duyệt rủi ro medium/high/critical gắn `blocker_id`; không được gọi lệnh repair trước đó.
 - `server_binding.py run-command` chỉ cho phép phase đúng, approval hợp lệ và Linux bubblewrap sandbox. Chế độ không có sandbox mặc định BLOCKED; không có tham số bỏ qua.
 - Không thể dùng cờ `--user-approved` để chứng minh mật mã rằng người dùng đã bấm nút thật; host/ứng dụng phải bảo đảm mapping thông điệp người dùng. Giữ audit đầy đủ, không tuyên bố đây là chữ ký số.
+
+
+## 9. SCRIPT_DURATION — dữ liệu QC3/QC4 bắt buộc (v1.2.9)
+- Tham khảo `references/SCRIPT_DURATION.md`. Bước 16 tạo `script/story_events.json` có `run_id`, `source_duration_sec`, mảng events (`id`, `summary`, `source_start_sec`, `phase`, `required`).
+- Bước 17 tạo `script/editorial_duration_plan.json` có `run_id`, `target_source=user|story_derived`, `target_duration_sec`, `estimated_tts_wpm`, `rationale`, `dossier_sha256`, `sections:[{name,duration_sec}]`. Không dùng thời lượng mặc định 7–9 phút.
+- Bước 20 tạo `script/review_script_v2.txt` và `script/event_coverage.json` (`run_id`, `events:[{event_id,status=covered|omitted,quote|reason}]`). Tất cả `required=true` phải có quote nguyên văn riêng biệt trong V2.
+- QC3 JSON report chung phải thêm `editorial_audit:{dossier,plan,script,coverage}` (các đường dẫn tuyệt đối trong cùng RUN_ID). `workflow_state.py qc-mark --gate 3` tính lại số từ/duration và kiểm tra độ phủ; ghi immutable SHA256 của bốn file trong state. Ngưỡng 80–120% target là kiểm tra lời kể dự kiến, không áp thời lượng cố định cho các phim.
+- QC4 JSON report chung thêm `tts_duration_audit:{master_wav}` (WAV PCM thật). `workflow_state.py qc-mark --gate 4` đọc số frame/sample-rate, so 80–120% target và lưu SHA256 audio. QC5/QC8 kiểm tra audio SHA vẫn đúng.
+- Nếu QC3/4 quá ngắn, xin duyệt riêng `reopen-editorial --from-step 16|17 --reason ... --evidence ... --user-approved` để tạo lượt chỉnh sửa trong RUN_ID, lưu lịch sử, đặt lại các bước/approvals/QC liên quan; KHÔNG tự quay lại hoặc sửa file đã duyệt mà không có phê duyệt.
+- State schema 9; lượt cũ schema 8 không tự động resume sau nâng cấp. `server_binding.py` vẫn giữ cơ chế khóa server/folder, không auto failover.

@@ -90,3 +90,10 @@ Chỉ skip khi thực sự không áp dụng và người dùng xác nhận rõ 
 - Sau khi phát sinh blocker medium/high/critical, phải hiển thị đề xuất sửa rồi nhận phê duyệt đúng `blocker_id` bằng `approve-repair` trước khi thực hiện lệnh sửa.
 - Không SKIPPED bước chưa được phê duyệt; các bước 09/16/20/24/28/32/36/39 không được SKIPPED. `qc-mark` cần report có ít nhất hai phép kiểm tra, file evidence ở WORKSPACE và hash.
 - Một khi bắt đầu cài, nếu thêm phụ thuộc mới phải hoàn thành/khôi phục item hiện tại, giữ mục đã PASS, lập lại kế hoạch có mục mới và duyệt hash mới. Phê duyệt cũ không cấp quyền cho phụ thuộc mới.
+
+
+## G. Phân bổ thời lượng và sửa kịch bản có phê duyệt (v1.2.9)
+- Trong một run, trước bước 20 phải lập mục tiêu thời lượng phim riêng và chứng minh độ bao phủ cốt truyện theo `references/SCRIPT_DURATION.md`. Không mặc định review 7–9 phút.
+- QC3 phải kiểm tra `editorial_audit` từ kịch bản và hồ sơ sự kiện thật; QC4 phải kiểm tra `tts_duration_audit` từ WAV PCM thật. Thiếu hoặc sai không được PASS. Không lách bằng filler, tốc độ TTS bất thường hoặc outro kéo dài.
+- Nếu cần quay lại bước 16 hoặc 17, chỉ gọi `reopen-editorial` sau khi người dùng phê duyệt rõ, ghi lý do và evidence. Lượt cũ được ghi lịch sử, các bước từ điểm quay lại trở đi bị reset, toàn bộ approvals và QC liên quan hết hiệu lực, bắt buộc chờ duyệt từng bước lại.
+- Không cho phép thay đổi file đã QC3 rồi âm thầm qua QC4/5/8; kiểm tra lại SHA256 và thời lượng WAV thực.

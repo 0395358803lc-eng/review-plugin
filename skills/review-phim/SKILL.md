@@ -2,13 +2,13 @@
 name: review-phim
 description: "Điều phối nghiên cứu và sản xuất review phim với khóa máy chủ/thư mục, một lần duyệt toàn bộ danh mục cài đặt và phê duyệt riêng từng bước trong quy trình 40 bước; 8 QC tuần tự, BLOCKED phải sửa và xác minh PASS."
 ---
-# Review-Phim 1.2.8
+# Review-Phim 1.2.9
 
 ## Nguyên tắc cốt lõi
 
 **Một lượt Production = một máy chủ + một tài khoản kết nối + một thư mục video + một thư mục logo + một chuỗi phê duyệt có audit.** Sau khi người dùng chọn, các thông tin lựa chọn này bị khóa cho đến khi lượt kết thúc. Không tự chuyển máy, đổi account, thay folder, tìm đường dẫn tương tự hoặc dùng tài nguyên từ dự án khác.
 
-Trước khi làm việc, bắt buộc đọc `references/SERVER_BINDING.md` và `references/WORKSPACE_LAYOUT.md`. SERVER_BINDING ưu tiên nhận diện máy chủ; WORKSPACE_LAYOUT ưu tiên phạm vi ghi dữ liệu và vị trí các file. Tiếp tục tuân thủ `references/OPERATIONS.md`, `references/SEQUENTIAL_EXECUTION.md`, `references/WORKFLOW.md`, `references/QUALITY.md`, `references/SCHEMAS.md` và `references/EDITORIAL.md`.
+Trước khi làm việc, bắt buộc đọc `references/SERVER_BINDING.md` và `references/WORKSPACE_LAYOUT.md`. SERVER_BINDING ưu tiên nhận diện máy chủ; WORKSPACE_LAYOUT ưu tiên phạm vi ghi dữ liệu và vị trí các file. Tiếp tục tuân thủ `references/OPERATIONS.md`, `references/SEQUENTIAL_EXECUTION.md`, `references/WORKFLOW.md`, `references/QUALITY.md`, `references/SCHEMAS.md`, `references/EDITORIAL.md` và **`references/SCRIPT_DURATION.md`** (bắt buộc cho bước 16–40 và QC3/QC4).
 
 ## 1. Bắt đầu trực tiếp — không chọn chế độ
 
@@ -91,6 +91,15 @@ Nếu hai đường dẫn đã có trong yêu cầu hiện tại thì dùng đú
 - Không gộp nhiều bước vào một lần thực thi, kể cả khi người dùng nói “tiếp tục”. Chỉ một lần phê duyệt rõ ràng mới mở khóa đúng một bước.
 
 Mọi manifest, log, QC report và artefact phải ghi cùng `run_id`, `binding_id`, `deviceId`, `link_id`, machine fingerprint, `VIDEO_ROOT` và `LOGO_ROOT`. Không trộn file từ lượt/máy khác.
+
+## 5.2. Chất lượng kịch bản và thời lượng — KHÔNG cố định 7–9 phút
+
+- Không mặc định mỗi phim có review 7–9 phút. Nếu người dùng đã chỉ định thời lượng, dùng đúng mục tiêu đó; nếu chưa, **tính riêng theo thời lượng nguồn, số sự kiện, độ phức tạp quan hệ, nguyên nhân/hậu quả, xung đột và nhịp kể** rồi giải thích lý do. Không lấy mẫu từ `EXAMPLE.md` hoặc số phút từ phiên chat trước.
+- **Bước 16:** xây danh mục `story_events.json` có timestamp, phase, lý do sự kiện quan trọng. **Bước 17:** tạo `editorial_duration_plan.json` gồm target seconds, WPM ước tính, số từ theo mục tiêu và phân bổ ngân sách từng phần. **Bước 18–19:** kiểm tra nội dung V1/V2 có bao phủ các sự kiện cần thiết. **Bước 20:** tạo `event_coverage.json` với câu thực trong V2 và đăng ký `editorial_audit` tại QC3.
+- QC3 **phải tính lại từ tệp thực**: số từ cách nhau bởi dấu trắng, thời lượng lời kể ước tính, source/event coverage và hash. Không PASS kịch bản ngắn hơn mục tiêu từ nguồn phim khi chưa chỉnh lý có căn cứ. Không thêm filler, không bịa tình tiết hoặc cố kéo dài vô nghĩa.
+- **Bước 24/QC4** phải đo WAV master thật, đối chiếu mục tiêu của QC3; WAV ngắn hơn kế hoạch không được chuyển thẳng sang timeline. Từ bước 25 trở đi giữ đủ lời kể đã được duyệt; QC5/QC8 không cho sử dụng WAV đã thay đổi sau QC4.
+- Nếu cần viết lại sau QC3/QC4, chỉ sử dụng `reopen-editorial --from-step 16|17 --user-approved` **sau khi người dùng phê duyệt riêng**; lưu dấu bài cũ và yêu cầu duyệt từng bước lại. Không tự quay về viết lại hoặc xóa state.
+- Xem chi tiết file mẫu, tiêu chí và giới hạn tại **`references/SCRIPT_DURATION.md`**. Mọi tệp audit đều nằm trong WORKSPACE đúng RUN_ID.
 
 ## 6. BLOCKED — không tự failover
 

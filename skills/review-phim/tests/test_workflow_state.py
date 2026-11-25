@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import importlib.util
+from duration_test_helpers import asset_fixture, make_pcm_wav
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "workflow_state.py"
 spec = importlib.util.spec_from_file_location("review_phim_workflow_state", SCRIPT)
@@ -81,6 +82,10 @@ class WorkflowStateTests(unittest.TestCase):
             ],
             "evidence_paths": [str(self.ev)],
         }), encoding="utf-8")
+        if gate == 3:
+            payload = json.loads(report.read_text(encoding='utf-8'))
+            payload['editorial_audit'] = asset_fixture(self.work, run_id='run-test')
+            report.write_text(json.dumps(payload,ensure_ascii=False),encoding='utf-8')
         self.call(mod.cmd_qc_mark, **self.context(gate=gate, report=report))
         return report
 
@@ -352,6 +357,81 @@ class WorkflowStateTests(unittest.TestCase):
             self.call(mod.cmd_install_mark, **self.context(item_id="b",status="running",note="try",evidence=[]))
         self.approve_install_plan()
         self.call(mod.cmd_install_mark, **self.context(item_id="b",status="running",note="approved",evidence=[]))
+
+    def advance_to_step_21(self):
+        self.start_preflight()
+        for step in range(1, 21):
+            self.approve_step(step)
+            self.mark(step, 'running')
+            if step in mod.QC_GATES:
+                self.qc_pass(step)
+            self.mark(step, 'pass', evidence=[self.ev])
+        self.assertEqual(mod.current_step(mod.load_state(self.state)), 21)
+
+    def test_qc3_real_script_gate_blocks_missing_audit(self):
+        self.start_preflight()
+        for step in range(1, 21):
+            self.approve_step(step)
+            self.mark(step, 'running')
+            if step in (9, 16):
+                self.qc_pass(step)
+            if step == 20:
+                report=self.work/'invalidQC3.json'
+                report.write_text(json.dumps({'run_id':'run-test','gate':3,'step':20,'status':'pass',
+                    'checks':[{'id':'a','method':'manual','passed':True},{'id':'b','method':'review','passed':True}],
+                    'evidence_paths':[str(self.ev)]}))
+                with self.assertRaisesRegex(ValueError,'QC3_EDITORIAL_AUDIT_REQUIRED'):
+                    self.call(mod.cmd_qc_mark,**self.context(gate=3,report=report))
+                self.qc_pass(step)
+            self.mark(step,'pass',evidence=[self.ev])
+
+    def test_qc4_requires_measured_audio_length(self):
+        self.advance_to_step_21()
+        self.call(mod.cmd_select_voice,**self.context(voice='Preset A',engine='VieNeu',note='explicit',evidence=self.ev,user_confirmed=True))
+        for step in range(21, 25):
+            self.approve_step(step)
+            self.mark(step,'running')
+            if step == 24:
+                report=self.work/'QC4-measured.json'
+                wav=self.work/'narration_final.wav'
+                make_pcm_wav(wav,420)
+                payload={'run_id':'run-test','gate':4,'step':24,'status':'pass',
+                    'checks':[{'id':'signal','method':'wave','passed':True},{'id':'alignment','method':'asr','passed':True}],
+                    'evidence_paths':[str(self.ev)],'tts_duration_audit':{'master_wav':str(wav)}}
+                report.write_text(json.dumps(payload))
+                with self.assertRaisesRegex(ValueError,'QC4_TTS_DURATION_MISMATCH'):
+                    self.call(mod.cmd_qc_mark,**self.context(gate=4,report=report))
+                make_pcm_wav(wav,600)
+                self.call(mod.cmd_qc_mark,**self.context(gate=4,report=report))
+            self.mark(step,'pass',evidence=[self.ev])
+        self.assertEqual(mod.current_step(mod.load_state(self.state)),25)
+
+    def test_reopen_editorial_requires_user_and_resets_approvals(self):
+        self.advance_to_step_21()
+        kw=self.context(from_step=17,reason='Actual voice duration too short; expand the event coverage and pacing.',
+                        evidence=self.ev,user_approved=False)
+        with self.assertRaisesRegex(ValueError,'EDITORIAL_REOPEN_APPROVAL_REQUIRED'):
+            self.call(mod.cmd_reopen_editorial,**kw)
+        kw['user_approved']=True
+        self.call(mod.cmd_reopen_editorial,**kw)
+        data=mod.load_state(self.state)
+        self.assertEqual(mod.current_step(data),17)
+        self.assertNotIn('3',data['qc_gates'])
+        self.assertIn('2',data['qc_gates'])
+        self.assertIsNone(data['voice_selection'])
+        self.assertTrue(data['editorial_revision_history'])
+        self.assertTrue(data['editorial_revision_history'][-1]['archive'])
+        with self.assertRaisesRegex(ValueError,'STEP_17_NOT_APPROVED'):
+            self.mark(17,'running')
+
+    def test_reopen_dossier_clears_qc2(self):
+        self.advance_to_step_21()
+        self.call(mod.cmd_reopen_editorial,**self.context(from_step=16,reason='Found more evidence in the source footage that must enter the dossier.',
+                                             evidence=self.ev,user_approved=True))
+        data=mod.load_state(self.state)
+        self.assertEqual(mod.current_step(data),16)
+        self.assertNotIn('2',data['qc_gates'])
+        self.assertNotIn('3',data['qc_gates'])
 
     def test_exec_requires_approved_running_state(self):
         self.mark(0,"running")

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "review-phim",
-  "version": "1.2.8",
-  "description": "Review-Phim: khóa máy chủ/thư mục, phê duyệt cài đặt và từng bước; khóa lệnh, bắt buộc QC và cô lập ghi WORKSPACE.",
+  "version": "1.2.9",
+  "description": "Review-Phim: khóa máy chủ/WORKSPACE, duyệt từng bước; QC3 kiểm tra kịch bản theo độ dài phim, QC4 đối chiếu WAV thật, giữ 8 QC.",
   "author": {
     "name": "SQY",
     "email": "hareriatoele@gmail.com"
